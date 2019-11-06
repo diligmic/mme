@@ -63,7 +63,7 @@ class Ontology():
         return Constraint(self, formula, logic)
 
 
-class MonteCarloInferenceModel():
+class MonteCarloTraining():
 
     def __init__(self, global_potential, sampler, learning_rate=0.001, p_noise=0, num_samples=1, minibatch = None):
         self.p_noise = p_noise
@@ -74,7 +74,7 @@ class MonteCarloInferenceModel():
         self.minibatch = minibatch # list of indices to gather from data
 
 
-    def maximize(self, y, x=None):
+    def maximize_likelihood_step(self, y, x=None):
         """The method returns a training operation for maximizing the likelihood of the model."""
 
         if self.p_noise > 0:

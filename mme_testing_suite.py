@@ -244,12 +244,12 @@ class Test(unittest.TestCase):
         sampler = mme.sampling.GPUGibbsSampler(potential=P, num_variables=o.herbrand_base_size,
                                                num_chains=10)
 
-        """Instantiating an MME model using the previous sampler and MonteCarlo to compute expecations"""
-        model = mme.MonteCarloInferenceModel(global_potential=P, sampler=sampler, p_noise=0, num_samples=10,
-                                             learning_rate=0.1)
+        """Instantiating training object using the previous sampler and MonteCarlo to compute expecations"""
+        mct = mme.MonteCarloTraining(global_potential=P, sampler=sampler, p_noise=0, num_samples=10,
+                                       learning_rate=0.1)
 
         """Training operation asks for the maximization of the likelihood of the given interpretation"""
-        train_op = model.maximize(herbrand_interpretation)
+        train_op = mct.maximize_likelihood_step(herbrand_interpretation)
 
 
         """Tensorflow training routine"""
