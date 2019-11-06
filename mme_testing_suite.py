@@ -142,7 +142,7 @@ class TestParser(unittest.TestCase):
         assert np.all(rp_1 == rp_2.T)
 
     def test_formula_parsing(self):
-        #Here we test non-contiguos atom indices due to different ways variables are used (for example in simmetry check)
+        #here we start testing connectives parsing
 
         o = Ontology()
         data_people = ["Michelangelo", "Francesco", "Giuseppe", "Maria"]
@@ -165,7 +165,7 @@ class TestParser(unittest.TestCase):
         c = o.get_constraint("marriedWith(x,y) and marriedWith(y,x)", mme.logic.TFLogic)
 
     def test_compilation(self):
-        # Here we test non-contiguos atom indices due to different ways variables are used (for example in simmetry check)
+        # here we test compilation of formulas
 
         o = Ontology()
         data_people = ["Michelangelo", "Giuseppe", "Maria"]
@@ -190,8 +190,12 @@ class TestParser(unittest.TestCase):
         sess = tf.Session()
         assert np.all(sess.run(t)) == True
 
+
+    """Here we should add much more test cases for all the things imported from NMLNs"""
+
+
     def test_simple_learning_problem(self):
-        # Here we test non-contiguos atom indices due to different ways variables are used (for example in simmetry check)
+        #here we test a simple learning problem with gibbs sampling and monte carlo
 
         o = Ontology()
         data_people = ["Michelangelo", "Giuseppe", "Maria"]
