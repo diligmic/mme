@@ -9,7 +9,7 @@ class Domain():
         if name is not None:
             self.name = str(name)
         else:
-            raise Exception("Domain 'name' is None.")
+            raise Exception("Attribute 'name' is None.")
         self.data = data
         self.num_constants = len(data) #TODO check iterable
 

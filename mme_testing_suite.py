@@ -6,7 +6,7 @@ import numpy as np
 import tensorflow as tf
 
 
-class TestParser(unittest.TestCase):
+class Test(unittest.TestCase):
 
     def test_new_domain(self):
 
@@ -165,7 +165,7 @@ class TestParser(unittest.TestCase):
         c = o.get_constraint("marriedWith(x,y) and marriedWith(y,x)", mme.logic.TFLogic)
 
     def test_compilation(self):
-        # here we test compilation of formulas
+        """here we test compilation of formulas"""
 
         o = Ontology()
         data_people = ["Michelangelo", "Giuseppe", "Maria"]
@@ -195,13 +195,17 @@ class TestParser(unittest.TestCase):
 
 
     def test_simple_learning_problem(self):
-        #here we test a simple learning problem with gibbs sampling and monte carlo
+        """here we test a simple learning problem with gibbs sampling and monte carlo"""
 
+        """Ontology instantiation """
         o = Ontology()
-        data_people = ["Michelangelo", "Giuseppe", "Maria"]
+
+        """Domains definition"""
+        data_people = ["Michelangelo", "Giuseppe", "Maria"] #this should be substituted with actual features
         people = Domain("People", data_people)
         o.add_domain(people)
 
+        """Predicates definition"""
         student = Predicate("student", domains=[people])
         professor = Predicate("professor", domains=[people])
         married_with = Predicate("marriedWith", domains=[people, people])
@@ -209,47 +213,54 @@ class TestParser(unittest.TestCase):
         o.add_predicate(professor)
         o.add_predicate(married_with)
 
+        """These is a single interpretation we want to learn from (alias labels)"""
         herbrand_interpretation = np.array([[0, 1, 1,  # student interpretation
-                                   1, 0, 0,
+                                   1, 0, 0, # professor interpretation
                                    0, 0, 0,  # marriedWith interpretation
                                    0, 0, 1,
                                    0, 1, 0
                                    ]], dtype=np.bool)
 
+
+        """Potentials definition"""
+
+        """Logical Contraints definition"""
         c1 = o.get_constraint("marriedWith(x,y) -> marriedWith(y,x)", mme.logic.TFLogic)
         c2 = o.get_constraint("student(x) and not professor(x)", mme.logic.TFLogic)
         c3 = o.get_constraint("student(x) and professor(x)", mme.logic.TFLogic)
 
-        '''Instantiating the global potential'''
+        """Creating the correspondent potentials"""
+        p1 = mme.potentials.LogicPotential(c1)
+        p2 = mme.potentials.LogicPotential(c2)
+        p3 = mme.potentials.LogicPotential(c3)
+
+        '''Instantiating the global potential and adding single potentials'''
         P = mme.potentials.GlobalPotential()
+        P.add(p1)
+        P.add(p2)
+        P.add(p3)
 
-        '''Instantiating a simple fragmented potential'''
-
-        P.add(mme.potentials.LogicPotential(c1))
-        P.add(mme.potentials.LogicPotential(c2))
-        P.add(mme.potentials.LogicPotential(c3))
-
+        """Instantiating a sampling algorithm """
         sampler = mme.sampling.GPUGibbsSampler(potential=P, num_variables=o.herbrand_base_size,
                                                num_chains=10)
 
+        """Instantiating an MME model using the previous sampler and MonteCarlo to compute expecations"""
         model = mme.MonteCarloInferenceModel(global_potential=P, sampler=sampler, p_noise=0, num_samples=10,
                                              learning_rate=0.1)
 
-
+        """Training operation asks for the maximization of the likelihood of the given interpretation"""
         train_op = model.maximize(herbrand_interpretation)
 
 
+        """Tensorflow training routine"""
         sess = tf.Session()
         sess.run(tf.global_variables_initializer())
-
         for i in range(100):
             sess.run(train_op)
-        #
-        # for p in P.potentials:
-        #     print(sess.run(p(herbrand_interpretation)))
-        #
-        # print(sess.run(P(herbrand_interpretation)))
-        #
+
+
+
+        #  Here we check that betas sign is meaningful
         assert sess.run(P.variables[0])>0
         assert sess.run(P.variables[1])>0
         assert sess.run(P.variables[2])<0
