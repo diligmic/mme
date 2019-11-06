@@ -219,7 +219,7 @@ class Test(unittest.TestCase):
                                    0, 0, 0,  # marriedWith interpretation
                                    0, 0, 1,
                                    0, 1, 0
-                                   ]], dtype=np.bool)
+                                   ]], dtype=np.float32)
 
 
         """Potentials definition"""
