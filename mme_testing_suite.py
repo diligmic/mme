@@ -187,8 +187,7 @@ class Test(unittest.TestCase):
         c = o.get_constraint("marriedWith(x,y) -> marriedWith(y,x)", mme.logic.TFLogic)
         t = c.compile(herbrand_interpretation=np.array(herbrand_interpretation, dtype=np.bool))
 
-        sess = tf.Session()
-        assert np.all(sess.run(t)) == True
+        assert np.all(t) == True
 
 
     """Here we should add much more test cases for all the things imported from NMLNs"""
@@ -249,29 +248,24 @@ class Test(unittest.TestCase):
                                        learning_rate=0.1)
 
         """Training operation asks for the maximization of the likelihood of the given interpretation"""
-        train_op = mct.maximize_likelihood_step(herbrand_interpretation)
 
 
         """Tensorflow training routine"""
-        sess = tf.Session()
-        sess.run(tf.global_variables_initializer())
-        for i in range(100):
-            sess.run(train_op)
-
-
+        for i in range(10):
+            mct.maximize_likelihood_step(herbrand_interpretation)
 
         #  Here we check that betas sign is meaningful
-        assert sess.run(P.variables[0])>0
-        assert sess.run(P.variables[1])>0
-        assert sess.run(P.variables[2])<0
+        assert P.variables[0]>0
+        assert P.variables[1]>0
+        assert P.variables[2]<0
 
 
-    def test_supervised_potentials(self):
-
-        o = Ontology()
-
-        d = Domain(name = "Images", data=)
-
+    # def test_supervised_potentials(self):
+    #
+    #     o = Ontology()
+    #
+    #     d = Domain(name = "Images", data=)
+    #
 
 
 if __name__ == '__main__':

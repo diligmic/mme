@@ -1,11 +1,10 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
-from .constants import *
-import numpy as np
 
 
 class Sampler(object):
 
+    @tf.function
     def sample(self, conditional_data=None, num_samples=None, minibatch = None):
         pass
 
@@ -19,6 +18,7 @@ class SamplerAggregation(Sampler):
             if isinstance(s, Sampler):
                 self.samplers.append(s)
 
+    @tf.function
     def sample(self, conditional_data=None, num_samples=None, minibatch = None):
 
         S = []
@@ -27,18 +27,7 @@ class SamplerAggregation(Sampler):
 
         return tf.stack(S, axis=0)
 
-class NegativeSampler(object):
-
-    def __init__(self, y):
-        self.y = y
-
-    def sample(self, conditional_data=None, num_samples=None, minibatch = None):
-
-        self.current_state = tf.cast(tf.random_uniform(shape=tf.shape(self.y), minval=0, maxval=2, dtype=tf.int32), tf.float32)
-        return self.current_state
-
-
-class VariationalMAPSampler(Sampler):
+class VariationalMAPSamplerTF1(Sampler):
 
     def __init__(self, name, global_potential, var_shape, convergence_threshold = 0.00001, max_num_iter = 1000, learning_rate = 0.1):
         self.global_potential = global_potential
@@ -74,9 +63,7 @@ class VariationalMAPSampler(Sampler):
             map = tf.gather(map, minibatch)
         return map
 
-
-
-class VariationalMAPSamplerSigmoid(Sampler):
+class VariationalMAPSamplerSigmoidTF1(Sampler):
 
     def __init__(self, name, global_potential, var_shape, convergence_threshold = 0.00001, max_num_iter = 1000, learning_rate = 0.1):
         self.global_potential = global_potential
@@ -116,8 +103,7 @@ class VariationalMAPSamplerSigmoid(Sampler):
             map = tf.gather(map, minibatch)
         return map
 
-
-class VariationalBernoulli(Sampler):
+class VariationalBernoulliTF1(Sampler):
 
     def __init__(self, name, global_potential, var_shape, convergence_threshold = 0.00001, max_num_iter = 1000, learning_rate = 0.1):
         self.global_potential = global_potential
@@ -157,7 +143,7 @@ class VariationalBernoulli(Sampler):
             sample = tf.gather(sample, minibatch)
         return sample
 
-class GenerativeNetworkSampler(Sampler):
+class GenerativeNetworkSamplerTF1(Sampler):
 
 
     def __init__(self, name, global_potential, num_samples, num_variables, generative_model, learning_rate = 0.001, noise_dimensions = 10, is_test = False):
@@ -202,15 +188,7 @@ class GenerativeNetworkSampler(Sampler):
                 new_state  = tf.stop_gradient(new_state)
         return new_state
 
-
-class GPUGibbsSampler(Sampler):
-
-    count = 0
-    @staticmethod
-    def _get_id():
-        temp = GPUGibbsSampler.count
-        GPUGibbsSampler.count +=1
-        return temp
+class GPUGibbsSamplerTF1(Sampler):
 
 
     def __init__(self, potential, num_variables, inter_sample_burn=0, num_chains = 10, initial_state=None, evidence = None, flips=None):
@@ -219,70 +197,19 @@ class GPUGibbsSampler(Sampler):
         self.num_chains = num_chains
         self.inter_sample_burn = inter_sample_burn
         self.num_variables = num_variables
-        name = "init_state_global_"+str(GPUGibbsSampler._get_id())
         if initial_state is None:
-            self.current_state = tf.get_variable(name,
-                                                     initializer=tf.where(
-                                                         tf.random_uniform(shape=[self.num_chains, num_variables], minval=0,
-                                                                           maxval=1) > 0.5,
-                                                         tf.ones([self.num_chains, num_variables]),
-                                                         tf.zeros([self.num_chains, num_variables])),
-                                                     trainable=False
-                                                     )
+            self.current_state = tf.cast(tf.random.uniform(shape=[self.num_chains, num_variables], minval=0,
+                                                                           maxval=2, dtype=tf.int32), tf.float32)
         else:
-            self.current_state = tf.get_variable(name,
-                                                 initializer=initial_state,
-                                                 trainable=False
-                                                 )
+            self.current_state = initial_state
         self.evidence = evidence
         self.flips = flips
 
-    def sample(self, conditional_data=None, num_samples=None, minibatch = None):
+    @tf.function
+    def one_step(self, current_state, conditional_data):
 
-        if num_samples is not None:
-            num_chain_temp = ((num_samples-1) // self.num_chains) + 1
-        else:
-            num_chain_temp = self.num_chains
-
-        if self.flips is None:
-            kernel = GPUGibbsKernel(self.potential, conditional_data, evidence_mask=self.evidence, inter_sample_burn=self.inter_sample_burn)
-
-        else:
-            kernel = PartialGPUGibbsKernel(self.potential, conditional_data, evidence_mask=self.evidence, flips=self.flips)
-
-        current_state = self.current_state if minibatch is None else tf.gather(self.current_state, minibatch)
-
-        mcmc_res = tfp.mcmc.sample_chain(num_chain_temp,
-                                        current_state,
-                                        num_burnin_steps=self.inter_sample_burn,
-                                        kernel=kernel)
-        samples = mcmc_res[0]
-        if minibatch is None:
-            ass = tf.assign(self.current_state, samples[-1])
-        else:
-            ass = tf.scatter_update(self.current_state, minibatch, samples[-1])
-        with tf.control_dependencies([ass]):
-            samples = tf.stop_gradient(samples)
-        samples = tf.reshape(samples,[-1, self.num_variables])
-        # return samples
-        return tf.concat(samples,axis=0)[:num_samples]
-
-
-class GPUGibbsKernel(tfp.mcmc.TransitionKernel):
-
-    def __init__(self, potential, conditional_data, evidence_mask=None, inter_sample_burn=0):
-        super(GPUGibbsKernel, self).__init__()
-        self.potential = potential
-        self.masks = []
-        self.evidence_mask = evidence_mask if evidence_mask is not None else None
-        self.conditional_data = conditional_data
-
-
-
-    def one_step(self, current_state, previous_kernel_results):
-
-        num_examples = current_state.get_shape()[0].value
-        num_variables = current_state.get_shape()[1].value
+        num_examples = current_state.get_shape()[0]
+        num_variables = current_state.get_shape()[1]
 
         K = tf.random.shuffle(tf.range(num_variables, dtype=tf.int32))
         i = [tf.constant(0, dtype=tf.int32), current_state]
@@ -293,28 +220,110 @@ class GPUGibbsKernel(tfp.mcmc.TransitionKernel):
             mask = tf.one_hot(k, depth=num_variables)
             off_state = s * (1 - mask)
             on_state = off_state + mask
-            rand = tf.random_uniform(shape=[num_examples])
+            rand = tf.random.uniform(shape=[num_examples])
 
-            potential_on = self.potential(on_state, self.conditional_data)
-            potential_off = self.potential(off_state, self.conditional_data)
+            potential_on = self.potential(on_state, conditional_data)
+            potential_off = self.potential(off_state, conditional_data)
             p = tf.sigmoid(potential_on - potential_off)
             # p = tf.Print(p, [p, rand])
 
-            cond = rand < p
+            cond = tf.reshape(rand < p, shape=[-1, 1])
             current_state = tf.where(cond, on_state, off_state)
-            if self.evidence_mask is not None:
-                current_state = tf.cond(tf.equal(self.evidence_mask[0, k], 1), lambda: s, lambda: current_state)
+            if self.evidence is not None:
+                current_state = tf.cond(tf.equal(self.evidence[0, k], 1), lambda: s, lambda: current_state)
             i = i + 1
             return i, current_state
 
         i, r= tf.while_loop(c, body, i)
-        return r, []
+        return r
 
-    def is_calibrated(self):
-        return True
+    @tf.function
+    def sample(self, conditional_data=None, num_samples=None, minibatch = None):
 
-    def bootstrap_results(self, init_state):
-        return []
+        if num_samples is not None:
+            num_chain_temp = ((num_samples-1) // self.num_chains) + 1
+        else:
+            num_chain_temp = self.num_chains
+
+        current_state = self.current_state if minibatch is None else tf.gather(self.current_state, minibatch)
+
+        samples = []
+        for i in range(num_chain_temp):
+
+            current = samples[-1] if len(samples)>0 else current_state
+            samples.append(self.one_step(current_state=current, conditional_data=conditional_data))
+
+        if minibatch is None:
+            self.current_state = samples[-1]
+        else:
+            #todo minibatches not handled in v2
+            ass = tf.scatter_update(self.current_state, minibatch, samples[-1])
+        samples = tf.reshape(samples,[-1, self.num_variables])
+        # return samples
+        return tf.concat(samples,axis=0)[:num_samples]
+
+
+
+class GPUGibbsSampler(Sampler):
+
+
+    def __init__(self, potential, num_variables, inter_sample_burn=0, num_chains = 10, initial_state=None, evidence = None, flips=None):
+
+        self.potential = potential
+        self.num_chains = num_chains
+        self.inter_sample_burn = inter_sample_burn
+        self.num_variables = num_variables
+        if initial_state is None:
+            self.current_state = tf.cast(tf.random.uniform(shape=[self.num_chains, num_variables], minval=0,
+                                                                           maxval=2, dtype=tf.int32), tf.float32)
+        else:
+            self.current_state = tf.cast(initial_state, tf.float32)
+        self.evidence = evidence
+        self.flips = flips
+
+
+    @tf.function
+    def sample(self, conditional_data=None, num_samples=None, minibatch = None):
+
+        num_examples = self.num_chains
+        num_variables = self.num_variables
+
+        if num_samples is not None:
+            num_chain_temp = ((num_samples-1) // self.num_chains) + 1
+        else:
+            num_chain_temp = 1
+
+        current_state = self.current_state if minibatch is None else tf.gather(self.current_state, minibatch)
+
+        samples = []
+        for i in range(num_chain_temp):
+
+            K = tf.random.shuffle(tf.range(num_variables, dtype=tf.int32))
+            for k in K:
+
+                if self.evidence is not None and not tf.equal(self.evidence[0, k], 1):
+                    mask = tf.one_hot(k, depth=num_variables)
+                    off_state = current_state * (1 - mask)
+                    on_state = off_state + mask
+                    rand = tf.random.uniform(shape=[num_examples])
+
+                    potential_on = self.potential(on_state, conditional_data)
+                    potential_off = self.potential(off_state, conditional_data)
+                    p = tf.sigmoid(potential_on - potential_off)
+                    cond = tf.reshape(rand < p, shape=[-1, 1])
+                    current_state = tf.where(cond, on_state, off_state)
+
+            samples.append(current_state)
+
+        if minibatch is None:
+            self.current_state = samples[-1]
+        else:
+            #todo minibatches not handled in v2
+            ass = tf.scatter_update(self.current_state, minibatch, samples[-1])
+        samples = tf.reshape(samples,[-1, self.num_variables])
+        # return samples
+        return tf.concat(samples,axis=0)[:num_samples]
+
 
 
 class PartialGPUGibbsKernel(tfp.mcmc.TransitionKernel):
@@ -327,6 +336,7 @@ class PartialGPUGibbsKernel(tfp.mcmc.TransitionKernel):
         self.flips = flips
         self.conditional_data = conditional_data
 
+    @tf.function()
     def one_step(self, current_state, previous_kernel_results):
 
         num_examples = current_state.get_shape()[0].value
@@ -375,9 +385,11 @@ class PartialGPUGibbsKernel(tfp.mcmc.TransitionKernel):
         i,r,p, OFF,ON, DELTA = tf.while_loop(c, body, i)
         return r, [p, OFF/(num_examples*self.flips),ON/(num_examples*self.flips), DELTA/(num_examples*self.flips)]
 
+    @tf.function()
     def is_calibrated(self):
         return True
 
+    @tf.function()
     def bootstrap_results(self, init_state):
-        num_examples = init_state.get_shape()[0].value
+        num_examples = init_state.get_shape()[0]
         return [tf.zeros([num_examples]), tf.constant(0.), tf.constant(0.), tf.constant(0.)]

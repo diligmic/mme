@@ -70,12 +70,14 @@ class MonteCarloTraining():
         self.num_samples = num_samples
         self.global_potential = global_potential
         self.sampler = sampler
-        self.optimizer = tf.train.AdamOptimizer(learning_rate)
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate)
         self.minibatch = minibatch # list of indices to gather from data
 
 
     def maximize_likelihood_step(self, y, x=None):
         """The method returns a training operation for maximizing the likelihood of the model."""
+
+        samples = self.samples = self.sampler.sample(x, self.num_samples, minibatch=self.minibatch)
 
         if self.p_noise > 0:
             noise = tf.random_uniform(shape=y.shape)
@@ -86,27 +88,29 @@ class MonteCarloTraining():
             if x is not None:
                 x = tf.gather(x, self.minibatch)
 
-        potentials_data = self.global_potential(y, x)
+        with tf.GradientTape(persistent=True) as tape:
 
-        samples = self.samples =self.sampler.sample(x, self.num_samples, minibatch=self.minibatch)
-        potentials_samples = self.potentials_samples =  self.global_potential(samples, x)
+
+
+            potentials_data = self.global_potential(y, x)
+
+            potentials_samples = self.potentials_samples =  self.global_potential(samples, x)
 
 
         # Compute Gradients
         vars = self.global_potential.variables
 
         gradient_potential_data = [tf.convert_to_tensor(a) / tf.cast(tf.shape(y)[0], tf.float32) for a in
-                                   tf.gradients(ys=potentials_data, xs=vars)]
+                                   tape.gradient(target=potentials_data, sources=vars)]
 
         E_gradient_potential = [tf.convert_to_tensor(a) / self.num_samples for a in
-                                tf.gradients(ys=potentials_samples, xs=vars)]
+                                tape.gradient(target=potentials_samples, sources=vars)]
 
         w_gradients = [b - a for a, b in zip(gradient_potential_data, E_gradient_potential)]
         # Apply Gradients by means of Optimizer
         grad_vars = zip(w_gradients, vars)
-        train_op = self.optimizer.apply_gradients(grad_vars)
+        self.optimizer.apply_gradients(grad_vars)
 
-        return train_op
 
 
 class PiecewiseLearningModel():

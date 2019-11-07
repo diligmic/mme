@@ -2,24 +2,11 @@ import tensorflow as tf
 import numpy as np
 import abc
 
-class Potential(tf.keras.layers.Layer):
-
-    id = -1
-    states = {}
-
-    @staticmethod
-    def __newid__():
-        Potential.id+=1
-        return Potential.id
+class Potential(tf.Module):
 
     def __init__(self):
         super(Potential, self).__init__()
-        self.beta = tf.Variable("beta_%d"%Potential.__newid__(), shape=(), initializer=tf.zeros_initializer)
-
-
-    @property
-    def vars(self):
-        return []
+        self.beta = tf.Variable(initial_value=tf.zeros(shape=()))
 
     @property
     @abc.abstractmethod
@@ -31,12 +18,8 @@ class Potential(tf.keras.layers.Layer):
             Potential.states[self.cardinality] = np.array([[bool(i & (1<<k)) for k in range(self.cardinality)] for i in range(2**self.cardinality)])
         return Potential.states[self.cardinality]
 
-    def __call__(self,y, x=None):
-        return self.call(y,x)
-
-    def variables(self):
-        return [self.beta] + self.vars
-
+    def __call__(self, y, x=None):
+        pass
 
 
 class NeuralPotential(Potential):
@@ -46,14 +29,11 @@ class NeuralPotential(Potential):
         super(NeuralPotential, self).__init__()
         self.model = model
 
-    def call(self, y, x=None):
+    def __call__(self, y, x=None):
         if x is not None:
             y = tf.concat([y,x], axis=-1)
         return self.model(y)
 
-    @property
-    def vars(self):
-        return self.model.variables
 
 
 class FragmentedPotential(Potential):
@@ -70,11 +50,6 @@ class FragmentedPotential(Potential):
     def fragment(self, y, x=None):
         return None, None
 
-    @property
-    def vars(self):
-        return self.base_potential.vars
-
-
     def call(self, y, x=None):
 
         gamma_y, gamma_x = self.fragment(y,x)
@@ -84,7 +59,7 @@ class FragmentedPotential(Potential):
         return Phi
 
 
-class GlobalPotential():
+class GlobalPotential(tf.Module):
 
     def __init__(self, potentials=()):
 
@@ -99,13 +74,6 @@ class GlobalPotential():
             res += Phi.beta * Phi(y,x)
         return res
 
-    @property
-    def variables(self):
-        vars = []
-        for Phi in self.potentials:
-            vars.extend(Phi.variables())
-        return vars
-
 
 class LogicPotential(Potential):
 
@@ -119,7 +87,7 @@ class LogicPotential(Potential):
     def __call__(self, y, x=None):
         y = tf.cast(y, dtype=tf.bool)
         t = self.constraint.compile(herbrand_interpretation=y)
-        return tf.count_nonzero(t, axis=-1, dtype=tf.float32)
+        return tf.math.count_nonzero(t, axis=-1, dtype=tf.float32)
 
 
 
