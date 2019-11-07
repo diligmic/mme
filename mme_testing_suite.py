@@ -266,6 +266,12 @@ class Test(unittest.TestCase):
         assert sess.run(P.variables[2])<0
 
 
+    def test_supervised_potentials(self):
+
+        o = Ontology()
+
+        d = Domain(name = "Images", data=)
+
 
 
 if __name__ == '__main__':

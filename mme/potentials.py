@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import abc
 
-class Potential():
+class Potential(tf.keras.layers.Layer):
 
     id = -1
     states = {}
@@ -13,11 +13,9 @@ class Potential():
         return Potential.id
 
     def __init__(self):
-        self.beta = tf.get_variable("beta_%d"%Potential.__newid__(), shape=(), initializer=tf.zeros_initializer)
+        super(Potential, self).__init__()
+        self.beta = tf.Variable("beta_%d"%Potential.__newid__(), shape=(), initializer=tf.zeros_initializer)
 
-    @abc.abstractmethod
-    def call(self, y, x=None):
-        pass
 
     @property
     def vars(self):
