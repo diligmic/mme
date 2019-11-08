@@ -260,12 +260,63 @@ class Test(unittest.TestCase):
         assert P.variables[2]<0
 
 
-    # def test_supervised_potentials(self):
-    #
-    #     o = Ontology()
-    #
-    #     d = Domain(name = "Images", data=)
-    #
+    def test_supervised_potentials(self):
+        """Here we test classical supervised learning with a sampler. Just to test the new potential"""
+
+
+        num_samples = num_chains = 10
+
+        """Loading Data"""
+        num_examples = 100
+        (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+
+        x_train = x_train[:num_examples]
+        y_train = y_train[:num_examples]
+
+        x_train = np.reshape(x_train, [-1, 784])
+        y_train = np.eye(10)[y_train]
+
+
+        """Defining a neural model on which to condition our distribution"""
+        nn = tf.keras.Sequential()
+        nn.add(tf.keras.layers.Input(shape=(784,)))
+        nn.add(tf.keras.layers.Dense(100, activation=tf.nn.relu))
+        nn.add(tf.keras.layers.Dense(10, activation=None)) # todo: linear output layer. could be automatically added by the potential
+
+        """Instantiating the supervised potential"""
+        p1 = mme.potentials.DotProductPotential(model=nn)
+
+        """Instantiating the Global Potential"""
+        P = mme.potentials.GlobalPotential()
+        P.add(p1)
+
+
+        """Instantiating a sampling algorithm """
+        sampler = mme.sampling.GPUGibbsSampler(potential=P, num_variables=len(y_train[0]),
+                                               num_chains=num_chains, num_examples=num_examples)
+
+        """Instantiating training object using the previous sampler and MonteCarlo to compute expecations"""
+        mct = mme.MonteCarloTraining(global_potential=P, sampler=sampler, p_noise=0, num_samples=num_samples,
+                                       learning_rate=0.01)
+
+        """Tensorflow training routine"""
+        samples = []
+        potentials = []
+
+        for i in range(1000):
+            mct.maximize_likelihood_step(y=y_train, x=x_train)
+            # samples.append(mct.samples)
+
+            if i%10==0:
+                # samples_temp = tf.concat(samples, axis=1)
+                samples_temp = tf.reduce_mean(mct.samples, axis=1)
+                samples_temp = tf.one_hot(tf.argmax(samples_temp, axis=-1),10)
+
+
+                print(tf.reduce_mean(tf.keras.metrics.categorical_accuracy(samples_temp,y_train)))
+
+
+
 
 
 if __name__ == '__main__':

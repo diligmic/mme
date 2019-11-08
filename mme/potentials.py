@@ -24,7 +24,6 @@ class Potential(tf.Module):
 
 class NeuralPotential(Potential):
 
-
     def __init__(self, model):
         super(NeuralPotential, self).__init__()
         self.model = model
@@ -33,7 +32,6 @@ class NeuralPotential(Potential):
         if x is not None:
             y = tf.concat([y,x], axis=-1)
         return self.model(y)
-
 
 
 class FragmentedPotential(Potential):
@@ -89,7 +87,19 @@ class LogicPotential(Potential):
         t = self.constraint.compile(herbrand_interpretation=y)
         return tf.math.count_nonzero(t, axis=-1, dtype=tf.float32)
 
+class DotProductPotential(Potential):
 
+    def __init__(self, model):
+        super(DotProductPotential, self).__init__()
+        self.model = model
+
+
+    def __call__(self, y, x=None):
+        y = tf.cast(y, tf.float32)
+        o = self.model(x)
+        o =  tf.reshape(o, [tf.shape(x)[0], 1, -1])
+        t = tf.reduce_sum(o*y, -1)
+        return t
 
 
 

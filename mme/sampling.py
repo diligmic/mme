@@ -267,26 +267,25 @@ class GPUGibbsSamplerTF1(Sampler):
 class GPUGibbsSampler(Sampler):
 
 
-    def __init__(self, potential, num_variables, inter_sample_burn=0, num_chains = 10, initial_state=None, evidence = None, flips=None):
+    def __init__(self, potential, num_variables, inter_sample_burn=0, num_chains = 10, initial_state=None, evidence = None, flips=None, num_examples=1):
 
         self.potential = potential
-        self.num_chains = num_chains
         self.inter_sample_burn = inter_sample_burn
         self.num_variables = num_variables
+        self.num_examples = num_examples
+        self.num_chains = num_chains
+
         if initial_state is None:
-            self.current_state = tf.cast(tf.random.uniform(shape=[self.num_chains, num_variables], minval=0,
+            self.current_state = tf.cast(tf.random.uniform(shape=[self.num_examples, self.num_chains, num_variables], minval=0,
                                                                            maxval=2, dtype=tf.int32), tf.float32)
         else:
             self.current_state = tf.cast(initial_state, tf.float32)
         self.evidence = evidence
-        self.flips = flips
+        self.flips = flips if flips is not None else num_variables
 
 
     @tf.function
     def sample(self, conditional_data=None, num_samples=None, minibatch = None):
-
-        num_examples = self.num_chains
-        num_variables = self.num_variables
 
         if num_samples is not None:
             num_chain_temp = ((num_samples-1) // self.num_chains) + 1
@@ -295,23 +294,40 @@ class GPUGibbsSampler(Sampler):
 
         current_state = self.current_state if minibatch is None else tf.gather(self.current_state, minibatch)
 
+
+
+        #todo(giuseppe) Add initial and inter-sample burn for better sampling in small problems
         samples = []
         for i in range(num_chain_temp):
 
-            K = tf.random.shuffle(tf.range(num_variables, dtype=tf.int32))
-            for k in K:
+            # Gibbs sampling in random scan mode
+            # todo(giuseppe) allow ordered scan or other euristics from outside
 
-                if self.evidence is not None and not tf.equal(self.evidence[0, k], 1):
-                    mask = tf.one_hot(k, depth=num_variables)
-                    off_state = current_state * (1 - mask)
-                    on_state = off_state + mask
-                    rand = tf.random.uniform(shape=[num_examples])
 
-                    potential_on = self.potential(on_state, conditional_data)
-                    potential_off = self.potential(off_state, conditional_data)
-                    p = tf.sigmoid(potential_on - potential_off)
-                    cond = tf.reshape(rand < p, shape=[-1, 1])
-                    current_state = tf.where(cond, on_state, off_state)
+            #todo(giuseppe) improve the speed of this shuffling and of the third dimension. It has slowed too much.
+            scan = tf.reshape(tf.range(self.num_variables, dtype=tf.int32), [-1, 1, 1])
+            scan = tf.tile(scan, [1, self.num_examples, self.num_chains]) #num_variables, num_examples, num_chains (needed for shuffling along the axis=0
+            K = tf.random.shuffle(scan)[:self.flips,:,:]
+            K = tf.transpose(K, [1, 2, 0])
+            for i in range(self.flips):
+                k = K[:,:,i]
+
+                # if self.evidence is not None and not tf.equal(self.evidence[0, k], 1):
+                # todo(giuseppe) handle evidence in a tensorial way now
+
+                mask = tf.one_hot(k, depth=self.num_variables)
+                off_state = current_state * (1 - mask)
+                on_state = off_state + mask
+                rand = tf.random.uniform(shape=[self.num_examples, self.num_chains])
+
+
+                potential_on = self.potential(on_state, conditional_data)
+                potential_off = self.potential(off_state, conditional_data)
+
+
+                p = tf.sigmoid(potential_on - potential_off)
+                cond = tf.reshape(rand < p, shape=[self.num_examples, self.num_chains, 1])
+                current_state = tf.where(cond, on_state, off_state)
 
             samples.append(current_state)
 
@@ -319,14 +335,14 @@ class GPUGibbsSampler(Sampler):
             self.current_state = samples[-1]
         else:
             #todo minibatches not handled in v2
+            raise Exception("Minibatches not handled in v2")
             ass = tf.scatter_update(self.current_state, minibatch, samples[-1])
-        samples = tf.reshape(samples,[-1, self.num_variables])
-        # return samples
-        return tf.concat(samples,axis=0)[:num_samples]
+        # samples = tf.reshape(samples,[-1, self.num_variables]) #todo(Giuseppe) check if was it necessary with minibatches
+        return tf.concat(samples,axis=1)[:,:num_samples,:]
 
 
 
-class PartialGPUGibbsKernel(tfp.mcmc.TransitionKernel):
+class PartialGPUGibbsKernelTF1(tfp.mcmc.TransitionKernel):
 
     def __init__(self, potential, conditional_data, flips, evidence_mask=None):
         super(PartialGPUGibbsKernel, self).__init__()

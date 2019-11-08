@@ -97,6 +97,7 @@ class MonteCarloTraining():
             potentials_samples = self.potentials_samples =  self.global_potential(samples, x)
 
 
+
         # Compute Gradients
         vars = self.global_potential.variables
 
@@ -107,6 +108,7 @@ class MonteCarloTraining():
                                 tape.gradient(target=potentials_samples, sources=vars)]
 
         w_gradients = [b - a for a, b in zip(gradient_potential_data, E_gradient_potential)]
+
         # Apply Gradients by means of Optimizer
         grad_vars = zip(w_gradients, vars)
         self.optimizer.apply_gradients(grad_vars)
