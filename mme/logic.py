@@ -1,36 +1,76 @@
 import tensorflow as tf
 
-class TFLogic():
+class BooleanLogic():
 
     @staticmethod
     def _not(args):
         assert len(args)==1, "N-Ary negation not defined"
+        args = [tf.cast(a, tf.bool) for a in args]
         return tf.logical_not(args[0])
 
     @staticmethod
     def _and(args):
+        args = [tf.cast(a, tf.bool) for a in args]
         t = tf.stack(args, axis=-1)
         return tf.reduce_all(t, axis=-1)
 
     @staticmethod
     def _or(args):
+        args = [tf.cast(a, tf.bool) for a in args]
         t = tf.stack(args, axis=-1)
         return tf.reduce_any(t, axis=-1)
 
     @staticmethod
     def _implies(args):
         assert len(args)==2, "N-Ary implies not defined"
+        args = [tf.cast(a, tf.bool) for a in args]
         t = tf.logical_or(tf.logical_not(args[0]), args[1])
         return t
 
     @staticmethod
     def _iff(args):
         assert len(args) == 2, "N-Ary iff not defined"
+        args = [tf.cast(a, tf.bool) for a in args]
         t = tf.equal(args[0], args[1])
         return t
 
     @staticmethod
     def _xor(args):
         assert len(args) == 2, "N-Ary xor not defined"
+        args = [tf.cast(a, tf.bool) for a in args]
         t = tf.logical_xor(args[0], args[1])
         return t
+
+
+class LukasiewiczLogic():
+
+    @staticmethod
+    def _not(args):
+        assert len(args)==1, "N-Ary negation not defined"
+        return 1 - args[0]
+
+    @staticmethod
+    def _and(args):
+        t = tf.stack(args, axis=-1)
+        return tf.reduce_sum(t - 1, axis=-1) + 1
+
+    @staticmethod
+    def _or(args):
+        t = tf.stack(args, axis=-1)
+        return tf.minimum(1., tf.reduce_sum(y, axis=-1))
+
+    @staticmethod
+    def _implies(args):
+        assert len(args)==2, "N-Ary implies not defined"
+        t = tf.minimum(1., 1 - args[0] + args[1])
+        return t
+
+    @staticmethod
+    def _iff(args):
+        t = 1 - tf.abs(args[0] - args[1])
+        return t
+
+    @staticmethod
+    def _xor(args):
+        assert len(args) == 2, "N-Ary xor not defined"
+        return tf.abs(args[0] - args[1])

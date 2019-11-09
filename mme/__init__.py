@@ -1,4 +1,4 @@
-from .mme import Ontology, Domain, Predicate, MonteCarloTraining
+from .mme import *
 from . import potentials
 from . import logic
-from . import sampling
+from . import inference

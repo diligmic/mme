@@ -1,6 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
-
+import numpy as np
 
 class Sampler(object):
 
@@ -409,3 +409,36 @@ class PartialGPUGibbsKernelTF1(tfp.mcmc.TransitionKernel):
     def bootstrap_results(self, init_state):
         num_examples = init_state.get_shape()[0]
         return [tf.zeros([num_examples]), tf.constant(0.), tf.constant(0.), tf.constant(0.)]
+
+
+
+class FuzzyMAPInference():
+
+    def __init__(self, y_shape, potential, logic, evidence, evidence_mask):
+
+        # MAP
+        self.potential = potential
+        for p in self.potential.potentials:
+            p.logic = logic
+
+        self.y_shape = y_shape
+        self.var_map = tf.Variable(tf.zeros(y_shape))  # marriedWith(Maria,Giuseppe) 13
+        self.opt = tf.keras.optimizers.Adam(0.1)
+        self.evidence = evidence
+        self.evidence_mask = evidence_mask
+
+
+
+    def infer_step(self):
+
+            with tf.GradientTape() as tape:
+                y_map = tf.where(self.evidence_mask, (self.evidence+2-1)*4, self.var_map)
+                p_m = - self.potential(tf.sigmoid(y_map))
+            grad = tape.gradient(p_m, self.var_map)
+            grad_vars = [(grad, self.var_map)]
+            self.opt.apply_gradients(grad_vars)
+
+    def map(self):
+
+        return tf.where(self.evidence_mask, self.evidence, tf.sigmoid(self.var_map))
+
