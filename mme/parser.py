@@ -4,6 +4,7 @@ from collections import OrderedDict
 from itertools import product
 import numpy as np
 import tensorflow as tf
+from .logic import *
 class Variable():
 
     def __init__(self, name, domain):
@@ -31,9 +32,14 @@ class Atom():
     def compile(self, herbrand_interpretation):
         if self.indices is None:
             raise Exception("Atom indices not set")
-        t = tf.gather(herbrand_interpretation, self.indices, axis=-1) # todo this is the only point linked to tensorflow. If we want to make the compialtion dynamic we just provide the compilation function as parameter of the atom and to the constraint in turn
-
+        if herbrand_interpretation is not None:
+            t = tf.gather(herbrand_interpretation, self.indices, axis=-1) # todo this is the only point linked to tensorflow. If we want to make the compialtion dynamic we just provide the compilation function as parameter of the atom and to the constraint in turn
+        else:
+            t = self.all_possible
         return t
+
+    def set_all_possible(self, l):
+        self.all_possible = np.array(l).astype(np.bool)
 
 
 class Operator():
@@ -50,13 +56,26 @@ class Operator():
         return self.f(targs)
 
 
+def all_combinations_in_position(n,j):
+    base = np.concatenate((np.zeros([2**(n-1)]), np.ones([2**(n-1)])),axis=0)
+    base_r = np.reshape(base, [2 for _ in range(n)])
+
+    transposition = list(range(n))
+    for i in range(j):
+        k = transposition[i]
+        transposition[i]=transposition[i+1]
+        transposition[i + 1] = k
+    base_t = np.transpose(base_r, transposition)
+    base_f = np.reshape(base_t, [-1])
+    return base_f
+
 class Constraint(object):
 
-    def __init__(self, ontology, formula, logic):
+    def __init__(self, ontology, formula):
         self.ontology = ontology
         self.variables = OrderedDict()
         self.atoms = []
-        self.logic = logic
+        self.logic = None
 
         self.expression_tree = self.parse(formula)
 
@@ -73,8 +92,9 @@ class Constraint(object):
 
 
         #Computing Atom indices
-        for a in self.atoms:
+        for i, a in enumerate(self.atoms):
             a.set_indices(self.ontology.predicate_range[a.predicate.name][0])
+            a.set_all_possible(all_combinations_in_position(n=len(self.atoms), j=i))
 
         #Num groundings of the formula = num grounding of a generic atom
         self.num_groundings = self.atoms[0].num_groundings
@@ -102,22 +122,22 @@ class Constraint(object):
                 return a
             elif class_name == "NOT":
                 args = tokens[0][1:]
-                return Operator(self.logic._not, args)
+                return Operator(lambda x: self.logic._not(x), args)
             elif class_name == "AND":
                 args = tokens[0][::2]
-                return Operator(self.logic._and, args)
+                return Operator(lambda x: self.logic._and(x), args)
             elif class_name == "OR":
                 args = tokens[0][::2]
-                return Operator(self.logic._or, args)
+                return Operator(lambda x: self.logic._or(x), args)
             elif class_name == "XOR":
                 args = tokens[0][::2]
-                return Operator(self.logic._xor, args)
+                return Operator(lambda x: self.logic._xor(x), args)
             elif class_name == "IMPLIES":
                 args = tokens[0][::2]
-                return Operator(self.logic._implies, args)
+                return Operator(lambda x: self.logic._implies(x), args)
             elif class_name == "IFF":
                 args = tokens[0][::2]
-                return Operator(self.logic._iff, args)
+                return Operator(lambda x: self.logic._iff(x), args)
             # elif class_name == "FORALL":
             #     return forall(self.variables[tokens[1]], tokens[2][0])
             # elif class_name == "EXISTS":
@@ -175,7 +195,8 @@ class Constraint(object):
         tree = constraint.parseString(definition, parseAll=True)
         return tree[0]
 
-    def compile(self, herbrand_interpretation):
-        if self.logic is None:
-            raise Exception("Compilation is not allowed without any provided logic.")
-        return self.expression_tree.compile(herbrand_interpretation)
+    def compile(self, herbrand_interpretation, logic=BooleanLogic):
+        self.logic = logic
+        t = self.expression_tree.compile(herbrand_interpretation)
+        self.logic = None
+        return t
