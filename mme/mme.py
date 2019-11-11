@@ -123,7 +123,7 @@ class PieceWiseTraining():
         self.global_potential = global_potential
         self.optimizer = tf.keras.optimizers.Adam(learning_rate)
         self.minibatch = minibatch # list of indices to gather from data
-
+        self.y = y
 
 
     def compute_beta_logical_potentials(self):
@@ -134,7 +134,7 @@ class PieceWiseTraining():
                 ntrue = p(y=None)
                 nfalse = 2**p.cardinality - ntrue
 
-                y = tf.cast(y, tf.bool)
+                y = tf.cast(self.y, tf.bool)
                 avg_data = tf.reduce_mean(tf.cast(p.constraint.compile(herbrand_interpretation=y), tf.float32),axis=-1)
                 avg_data = tf.where(avg_data>0.5, avg_data -1e-7, avg_data+1e-7)
                 p.beta = tf.math.log(ntrue/nfalse) + tf.math.log(avg_data/(1 - avg_data))

@@ -511,7 +511,6 @@ class Test(unittest.TestCase):
         for i in range(20):
             map_inference.infer_step()
 
-        print(map_inference.map())
         assert map_inference.map()[0,13]>0.7 # marriedWith(Maria,Giuseppe)
         assert map_inference.map()[0,4]<0.3 # professor(Giuseppe)
 
