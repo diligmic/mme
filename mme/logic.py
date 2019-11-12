@@ -38,7 +38,7 @@ class BooleanLogic():
     def _xor(args):
         assert len(args) == 2, "N-Ary xor not defined"
         args = [tf.cast(a, tf.bool) for a in args]
-        t = tf.logical_xor(args[0], args[1])
+        t = tf.math.logical_xor(args[0], args[1])
         return t
 
 

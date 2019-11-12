@@ -5,6 +5,7 @@ from itertools import product
 import numpy as np
 import tensorflow as tf
 from .logic import *
+import itertools
 class Variable():
 
     def __init__(self, name, domain):
@@ -16,9 +17,10 @@ class Variable():
 
 class Atom():
 
-    def __init__(self, predicate, args):
+    def __init__(self, predicate, args, idx):
         self.predicate = predicate
         self.args = args
+        self.idx = idx
 
     def set_indices(self, offset_range):
         base = offset_range
@@ -27,19 +29,25 @@ class Atom():
             base = base + v.indices * next_domain_size
         self.indices = base
         self.num_groundings = len(base)
-        # self.indices = base if len(base.shape)>1 else np.reshape(base, [1, -1])
 
-    def compile(self, herbrand_interpretation):
+    def ground(self, herbrand_interpretation):
         if self.indices is None:
             raise Exception("Atom indices not set")
-        if herbrand_interpretation is not None:
-            t = tf.gather(herbrand_interpretation, self.indices, axis=-1) # todo this is the only point linked to tensorflow. If we want to make the compialtion dynamic we just provide the compilation function as parameter of the atom and to the constraint in turn
-        else:
-            t = self.all_possible
-        return t
+        if isinstance(herbrand_interpretation, np.ndarray):
+            e = np.expand_dims(np.take(herbrand_interpretation, self.indices, axis=-1), axis=-1) # todo this is the only point linked to tensorflow. If we want to make the compialtion dynamic we just provide the compilation function as parameter of the atom and to the constraint in turn
+            return e
+        return tf.expand_dims(tf.gather(herbrand_interpretation, self.indices, axis=-1), axis=-1) # todo this is the only point linked to tensorflow. If we want to make the compialtion dynamic we just provide the compilation function as parameter of the atom and to the constraint in turn
 
-    def set_all_possible(self, l):
-        self.all_possible = np.array(l).astype(np.bool)
+    def compile(self, groundings):
+        n = len(groundings.shape)
+        start = np.zeros([n], dtype=np.int32)
+        size = -1*np.ones([n], dtype=np.int32)
+        start[-1] = int(self.idx)
+        size[-1]=1
+        sl =  tf.squeeze(tf.slice(groundings, start, size), axis=-1)
+        # sl2 = groundings[:, :, :, self.idx]
+        return sl
+
 
 
 class Operator():
@@ -48,13 +56,17 @@ class Operator():
         self.f = f
         self.args = args
 
-    def compile(self, herbrand_interpretation):
+    def compile(self, groundings):
         targs = []
         for a in self.args:
-            cc = a.compile(herbrand_interpretation)
+            cc = a.compile(groundings)
             targs.append(cc)
         return self.f(targs)
 
+
+def all_combinations(n):
+    l = list(itertools.product([False, True], repeat=3))
+    return np.array(l).astype(np.float32)
 
 def all_combinations_in_position(n,j):
     base = np.concatenate((np.zeros([2**(n-1)]), np.ones([2**(n-1)])),axis=0)
@@ -80,11 +92,12 @@ class Constraint(object):
         self.expression_tree = self.parse(formula)
 
 
-        #Computing Variable indices
+        # Computing Variable indices
         sizes = []
         for i, (k, v) in enumerate(self.variables.items()):
             sizes.append(range(v.domain.num_constants))
 
+        # Cartesian Product
         indices = [i for i in product(*sizes)]
         indices = np.array(indices)
         for i, (k, v) in enumerate(self.variables.items()):
@@ -94,10 +107,21 @@ class Constraint(object):
         #Computing Atom indices
         for i, a in enumerate(self.atoms):
             a.set_indices(self.ontology.predicate_range[a.predicate.name][0])
-            a.set_all_possible(all_combinations_in_position(n=len(self.atoms), j=i))
 
         #Num groundings of the formula = num grounding of a generic atom
         self.num_groundings = self.atoms[0].num_groundings
+
+
+    def all_grounding_assignments(self):
+        #this corresponds to 1 sample, 1 grounding, 2^n possible assignments, v values of a single assignment [1,1, 2^n, n]
+        n = len(self.atoms)
+        l = list(itertools.product([True, False], repeat=n))
+        return np.expand_dims(np.expand_dims(np.array(l).astype(np.float32),axis=0), axis=1)
+
+    def all_sample_groundings_given_evidence(self, evidence_mask):
+
+        evidence_groundings = self.ground(herbrand_interpretation=evidence_mask)
+
 
 
     def _create_or_get_variable(self, id, domain):
@@ -108,7 +132,9 @@ class Constraint(object):
             self.variables[id] = v
         return self.variables[id]
 
-    def _createParseAction(self, class_name):
+
+
+    def _parse_action(self, class_name):
         def _create(tokens):
 
             if class_name == "Atomic":
@@ -117,7 +143,7 @@ class Constraint(object):
                 args = []
                 for i, t in enumerate(tokens[1:]):
                     args.append(self._create_or_get_variable(t, predicate.domains[i]))
-                a = Atom(predicate, args)
+                a = Atom(predicate, args, len(self.atoms))
                 self.atoms.append(a)
                 return a
             elif class_name == "NOT":
@@ -138,17 +164,6 @@ class Constraint(object):
             elif class_name == "IFF":
                 args = tokens[0][::2]
                 return Operator(lambda x: self.logic._iff(x), args)
-            # elif class_name == "FORALL":
-            #     return forall(self.variables[tokens[1]], tokens[2][0])
-            # elif class_name == "EXISTS":
-            #     return Exists(constraint, tokens, self.world)
-            # elif class_name == "EXISTN":
-            #     return Exists_n(constraint, tokens, self.world)
-            # elif class_name == "ARITHM_REL":
-            #     # TODO
-            #     raise NotImplementedError("Arithmetic Relations not already implemented")
-            # elif class_name == "FILTER":
-            #     parse_and_filter(constraint, tokens)
 
         return _create
 
@@ -173,30 +188,36 @@ class Constraint(object):
         forall = Keyword("forall")
         exists = Keyword("exists")
         forall_expression = forall + symbol + colon + Group(formula)
-        forall_expression.setParseAction(self._createParseAction("FORALL"))
+        forall_expression.setParseAction(self._parse_action("FORALL"))
         exists_expression = exists + symbol + colon + Group(formula)
-        exists_expression.setParseAction(self._createParseAction("EXISTS"))
+        exists_expression.setParseAction(self._parse_action("EXISTS"))
 
         relation = oneOf(list(self.ontology.predicates.keys()))
         atomic_formula = relation + left_parenthesis + delimitedList(var) + right_parenthesis
-        atomic_formula.setParseAction(self._createParseAction("Atomic"))
+        atomic_formula.setParseAction(self._parse_action("Atomic"))
         espression = forall_expression | exists_expression | atomic_formula
         formula << infixNotation(espression,
                                  [
-                                     (not_, 1, opAssoc.RIGHT, self._createParseAction("NOT")),
-                                     (and_, 2, opAssoc.LEFT, self._createParseAction("AND")),
-                                     (or_, 2, opAssoc.LEFT, self._createParseAction("OR")),
-                                     (xor, 2, opAssoc.LEFT, self._createParseAction("XOR")),
-                                     (implies, 2, opAssoc.RIGHT, self._createParseAction("IMPLIES")),
-                                     (iff, 2, opAssoc.RIGHT, self._createParseAction("IFF"))
+                                     (not_, 1, opAssoc.RIGHT,self._parse_action("NOT")),
+                                     (and_, 2, opAssoc.LEFT, self._parse_action("AND")),
+                                     (or_, 2, opAssoc.LEFT, self._parse_action("OR")),
+                                     (xor, 2, opAssoc.LEFT, self._parse_action("XOR")),
+                                     (implies, 2, opAssoc.RIGHT, self._parse_action("IMPLIES")),
+                                     (iff, 2, opAssoc.RIGHT, self._parse_action("IFF"))
                                  ])
 
         constraint = var ^ formula
         tree = constraint.parseString(definition, parseAll=True)
         return tree[0]
 
-    def compile(self, herbrand_interpretation, logic=BooleanLogic):
+    def compile(self, groundings, logic=BooleanLogic):
         self.logic = logic
-        t = self.expression_tree.compile(herbrand_interpretation)
+        t = self.expression_tree.compile(groundings)
         self.logic = None
         return t
+
+    def ground(self, herbrand_interpretation):
+        if isinstance(herbrand_interpretation, np.ndarray):
+            return np.stack([a.ground(herbrand_interpretation) for a in self.atoms], axis=-1)
+        else:
+            return tf.stack([a.ground(herbrand_interpretation) for a in self.atoms], axis=-1)

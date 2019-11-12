@@ -267,7 +267,7 @@ class GPUGibbsSamplerTF1(Sampler):
 class GPUGibbsSampler(Sampler):
 
 
-    def __init__(self, potential, num_variables, inter_sample_burn=0, num_chains = 10, initial_state=None, evidence = None, flips=None, num_examples=1):
+    def __init__(self, potential, num_variables, inter_sample_burn=0, num_chains = 10, initial_state=None, evidence = None, evidence_mask = None, flips=None, num_examples=1):
 
         self.potential = potential
         self.inter_sample_burn = inter_sample_burn
@@ -281,6 +281,9 @@ class GPUGibbsSampler(Sampler):
         else:
             self.current_state = tf.cast(initial_state, tf.float32)
         self.evidence = evidence
+        if evidence is not None:
+            self.evidence = tf.tile(tf.expand_dims(evidence, axis=1), [1, num_chains, 1])
+            self.evidence_mask =  tf.tile(tf.expand_dims(evidence_mask, axis=1), [1, num_chains, 1])
         self.flips = flips if flips is not None else num_variables
 
 
@@ -312,9 +315,6 @@ class GPUGibbsSampler(Sampler):
             for i in range(self.flips):
                 k = K[:,:,i]
 
-                # if self.evidence is not None and not tf.equal(self.evidence[0, k], 1):
-                # todo(giuseppe) handle evidence in a tensorial way now
-
                 mask = tf.one_hot(k, depth=self.num_variables)
                 off_state = current_state * (1 - mask)
                 on_state = off_state + mask
@@ -328,6 +328,8 @@ class GPUGibbsSampler(Sampler):
                 p = tf.sigmoid(potential_on - potential_off)
                 cond = tf.reshape(rand < p, shape=[self.num_examples, self.num_chains, 1])
                 current_state = tf.where(cond, on_state, off_state)
+                if self.evidence is not None: #todo(giuseppe) handle with multinomial. May increase shuffling speed also (previous todo)
+                    current_state = tf.where(self.evidence_mask, self.evidence, current_state)
 
             samples.append(current_state)
 
@@ -414,7 +416,7 @@ class PartialGPUGibbsKernelTF1(tfp.mcmc.TransitionKernel):
 
 class FuzzyMAPInference():
 
-    def __init__(self, y_shape, potential, logic, evidence, evidence_mask):
+    def __init__(self, y_shape, potential, logic, evidence, evidence_mask, learning_rate=0.001):
 
         # MAP
         self.potential = potential
@@ -423,17 +425,17 @@ class FuzzyMAPInference():
 
         self.y_shape = y_shape
         self.var_map = tf.Variable(tf.zeros(y_shape))  # marriedWith(Maria,Giuseppe) 13
-        self.opt = tf.keras.optimizers.Adam(0.1)
+        self.opt = tf.keras.optimizers.Adam(learning_rate)
         self.evidence = evidence
         self.evidence_mask = evidence_mask
 
 
 
-    def infer_step(self):
+    def infer_step(self, x=None):
 
             with tf.GradientTape() as tape:
                 y_map = tf.where(self.evidence_mask, (self.evidence+2-1)*4, self.var_map)
-                p_m = - self.potential(tf.sigmoid(y_map))
+                p_m = - self.potential(tf.sigmoid(y_map), x=x)
             grad = tape.gradient(p_m, self.var_map)
             grad_vars = [(grad, self.var_map)]
             self.opt.apply_gradients(grad_vars)

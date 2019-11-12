@@ -3,7 +3,9 @@ from mme import Ontology, Domain, Predicate
 import mme
 from itertools import product
 import numpy as np
+import matplotlib.pyplot as plt
 import tensorflow as tf
+import datasets
 
 
 mode = "TEST"
@@ -203,15 +205,15 @@ class Test(unittest.TestCase):
         o.add_predicate(student)
         o.add_predicate(married_with)
 
-        herbrand_interpretation = [0, 1, 1, #student interpretation
-
+        herbrand_interpretation = [[0, 1, 1, #student interpretation
                                    0, 0, 0,#marriedWith interpretation
                                    0, 0, 1,
                                    0, 1, 0
-                                   ]
+                                   ]]
 
         c = o.get_constraint("marriedWith(x,y) -> marriedWith(y,x)")
-        t = c.compile(herbrand_interpretation=np.array(herbrand_interpretation, dtype=np.bool))
+        g = c.ground(herbrand_interpretation=np.array(herbrand_interpretation, dtype=np.bool))
+        t = c.compile(groundings=g)
 
         assert np.all(t) == True
 
@@ -309,25 +311,30 @@ class Test(unittest.TestCase):
         d = mme.Domain("Images", data=x_train)
         o.add_domain(d)
 
-        predicates_to_supervise = []
+        indices = []
         for i in range(10):
-            pred = Predicate("%d" % i, domains=[d])
-            o.add_predicate(pred)
-            predicates_to_supervise.append(pred)
+            p = Predicate("%d" % i, domains=[d])
+            o.add_predicate(p)
+            fr = o.predicate_range[p.name][0]
+            to = o.predicate_range[p.name][1]
+            r = list(range(fr, to))
+            indices.append(r)
+        indices = np.stack(indices, axis=1) #this matrix indexes the herbrand interpretation, creating groundings for the potential. It depends on the particular nn/model used and what it predicts.
 
         """Defining a neural model on which to condition our distribution"""
         nn = tf.keras.Sequential()
         nn.add(tf.keras.layers.Input(shape=(784,)))
         nn.add(tf.keras.layers.Dense(100, activation=tf.nn.sigmoid))  # up to the last hidden layer
+        nn.add(tf.keras.layers.Dense(10, activation=None, use_bias=False))
 
         """Instantiating the supervised potential"""
-        p1 = mme.potentials.SupervisionLogicalPotential(model=nn, predicates=predicates_to_supervise, ontology=o)
+        p1 = mme.potentials.SupervisionLogicalPotential(model=nn, indices=indices)
 
         """Instantiating the Global Potential"""
         P = mme.potentials.GlobalPotential()
         P.add(p1)
 
-        """Instantiating training object using the previous sampler and MonteCarlo to compute expecations"""
+        """Instantiating training object using PieceWiseTraining"""
         pwt = mme.PieceWiseTraining(global_potential=P, learning_rate=0.001, y=herbrand_interpretation)
 
         """Tensorflow training routine"""
@@ -364,17 +371,20 @@ class Test(unittest.TestCase):
 
         """Logical Contraints definition"""
         c1 = o.get_constraint("marriedWith(x,y) -> marriedWith(y,x)")
-        assert tf.math.count_nonzero(c1.compile(None,mme.logic.BooleanLogic)) == 3
+        all = c1.all_grounding_assignments()
+        assert tf.math.count_nonzero(c1.compile(all,mme.logic.BooleanLogic)) == 3
 
         c2 = o.get_constraint("marriedWith(x,y) and marriedWith(y,x)")
-        assert tf.math.count_nonzero(c2.compile(None,mme.logic.BooleanLogic)) == 1
+        all = c2.all_grounding_assignments()
+        assert tf.math.count_nonzero(c2.compile(all,mme.logic.BooleanLogic)) == 1
 
         c3 = o.get_constraint("(student(x) and marriedWith(x,y)) -> marriedWith(y,x)")
-        assert tf.math.count_nonzero(c3.compile(None, mme.logic.BooleanLogic)) == 7
+        all = c3.all_grounding_assignments()
+        assert tf.math.count_nonzero(c3.compile(all, mme.logic.BooleanLogic)) == 7
 
         c4 = o.get_constraint("student(x) and marriedWith(x,y) and marriedWith(y,x)")
-        assert tf.math.count_nonzero(c4.compile(None, mme.logic.BooleanLogic)) == 1
-
+        all = c4.all_grounding_assignments()
+        assert tf.math.count_nonzero(c4.compile(all, mme.logic.BooleanLogic)) == 1
 
     def test_logic_problem_with_peacewise(self):
 
@@ -426,7 +436,8 @@ class Test(unittest.TestCase):
         P.add(p2)
         P.add(p3)
 
-        """Instantiating training object using the previous sampler and MonteCarlo to compute expecations"""
+
+        """Instantiating training object using PieceWiseTraining"""
         pwt = mme.PieceWiseTraining(global_potential=P, learning_rate=0.1, y=herbrand_interpretation)
         pwt.compute_beta_logical_potentials()
 
@@ -443,9 +454,12 @@ class Test(unittest.TestCase):
         assert P.potentials[1].beta>0
         assert P.potentials[2].beta<0
 
-
     def test_fuzzy_map_inference(self):
 
+
+
+        if exit_early_develop():
+            return
 
         """Ontology instantiation """
         o = Ontology()
@@ -490,11 +504,9 @@ class Test(unittest.TestCase):
         P.add(p2)
         P.add(p3)
 
-        """Instantiating training object using the previous sampler and MonteCarlo to compute expecations"""
+        """Instantiating training object using Piecewise Training"""
         pwt = mme.PieceWiseTraining(global_potential=P, learning_rate=0.1, y=herbrand_interpretation)
         pwt.compute_beta_logical_potentials()
-
-
 
 
         """Inference"""
@@ -506,7 +518,8 @@ class Test(unittest.TestCase):
                                         potential=P,
                                         logic = mme.logic.LukasiewiczLogic,
                                         evidence=evidence,
-                                        evidence_mask=evidence_mask)
+                                        evidence_mask=evidence_mask,
+                                        learning_rate=0.1)
 
         for i in range(20):
             map_inference.infer_step()
@@ -514,8 +527,9 @@ class Test(unittest.TestCase):
         assert map_inference.map()[0,13]>0.7 # marriedWith(Maria,Giuseppe)
         assert map_inference.map()[0,4]<0.3 # professor(Giuseppe)
 
+    def test_all_possible_assignment_to_a_grounding(self):
 
-
+        return True
 
 if __name__ == '__main__':
     # mode = "DEVELOPMENT"

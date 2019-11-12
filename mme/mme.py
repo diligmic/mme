@@ -3,6 +3,9 @@ from collections import OrderedDict
 import tensorflow as tf
 from .potentials import LogicPotential, SupervisionLogicalPotential
 import numpy as np
+from collections.abc import Iterable
+
+
 
 class Domain():
 
@@ -47,17 +50,27 @@ class Ontology():
 
     def add_domain(self, d):
         self.finalized = False
-        if d.name in self.domains:
-            raise Exception("Domain %s already exists" % d.name)
-        self.domains[d.name] = d
+        if not isinstance(d, Iterable):
+            D = [d]
+        else:
+            D = d
+        for d in D:
+            if d.name in self.domains:
+                raise Exception("Domain %s already exists" % d.name)
+            self.domains[d.name] = d
 
     def add_predicate(self, p):
         self.finalized = False
-        if p.name in self.predicates:
-            raise Exception("Predicate %s already exists" % p.name)
-        self.predicates[p.name] = p
-        self.predicate_range[p.name] = (self.herbrand_base_size,self.herbrand_base_size+p.groundings_number)
-        self.herbrand_base_size += p.groundings_number
+        if not isinstance(p, Iterable):
+            P = [p]
+        else:
+            P = p
+        for p in P:
+            if p.name in self.predicates:
+                raise Exception("Predicate %s already exists" % p.name)
+            self.predicates[p.name] = p
+            self.predicate_range[p.name] = (self.herbrand_base_size,self.herbrand_base_size+p.groundings_number)
+            self.herbrand_base_size += p.groundings_number
 
 
     def get_constraint(self,formula):
@@ -135,16 +148,14 @@ class PieceWiseTraining():
                 nfalse = 2**p.cardinality - ntrue
 
                 y = tf.cast(self.y, tf.bool)
-                avg_data = tf.reduce_mean(tf.cast(p.constraint.compile(herbrand_interpretation=y), tf.float32),axis=-1)
+                groundings = p.constraint.ground(herbrand_interpretation=y)
+                avg_data = tf.squeeze(tf.reduce_mean(tf.cast(p.constraint.compile(groundings), tf.float32),axis=1),axis=1)
                 avg_data = tf.where(avg_data>0.5, avg_data -1e-7, avg_data+1e-7)
                 p.beta = tf.math.log(ntrue/nfalse) + tf.math.log(avg_data/(1 - avg_data))
 
 
     def maximize_likelihood_step(self, y, x=None):
         """The method returns a training operation for maximizing the likelihood of the model."""
-
-
-
 
         if self.minibatch is not None:
             y = tf.gather(y, self.minibatch)
@@ -159,7 +170,8 @@ class PieceWiseTraining():
                 with tf.GradientTape(persistent=True) as tape:
 
                     y = p._reshape_y(y)
-                    xent = tf.nn.softmax_cross_entropy_with_logits(logits = p.model(x), labels=y)
+                    o = p.model(x)
+                    xent = tf.nn.softmax_cross_entropy_with_logits(logits = o, labels=y)
 
 
                 grad = tape.gradient(target=xent, sources=p.model.variables)
