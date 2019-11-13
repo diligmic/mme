@@ -57,7 +57,7 @@ class LukasiewiczLogic():
     @staticmethod
     def _or(args):
         t = tf.stack(args, axis=-1)
-        return tf.minimum(1., tf.reduce_sum(y, axis=-1))
+        return tf.minimum(1., tf.reduce_sum(t, axis=-1))
 
     @staticmethod
     def _implies(args):
@@ -74,3 +74,42 @@ class LukasiewiczLogic():
     def _xor(args):
         assert len(args) == 2, "N-Ary xor not defined"
         return tf.abs(args[0] - args[1])
+
+
+class ProductLogic():
+
+    @staticmethod
+    def _not(args):
+        assert len(args)==1, "N-Ary negation not defined"
+        return 1 - args[0]
+
+    @staticmethod
+    def _and(args):
+        t = tf.stack(args, axis=-1)
+        return tf.reduce_prod(t - 1, axis=-1) + 1
+
+    @staticmethod
+    def _or(args):
+        assert len(args)==1, "N-Ary or not defined for product t-norm"
+        return args[0] + args[1] + args[0]*args[1]
+
+    @staticmethod
+    def _implies(args):
+        assert len(args)==2, "N-Ary implies not defined"
+        a = args[0]
+        b = args[1]
+        return tf.where(a > b, b / (a + 1e-12), tf.ones_like(a))
+
+    @staticmethod
+    def _iff(args):
+        assert len(args) == 2, "N-Ary <-> not defined"
+        a = args[0]
+        b = args[1]
+        return 1 - a *(1-b) + (1-a)*b - a *(1-b)*(1-a)*b
+
+    @staticmethod
+    def _xor(args):
+        assert len(args) == 2, "N-Ary xor not defined"
+        a = args[0]
+        b = args[1]
+        return a *(1-b) + (1-a)*b - a *(1-b)*(1-a)*b

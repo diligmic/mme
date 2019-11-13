@@ -3,7 +3,6 @@ from mme import Ontology, Domain, Predicate
 import mme
 from itertools import product
 import numpy as np
-import matplotlib.pyplot as plt
 import tensorflow as tf
 import datasets
 
@@ -527,11 +526,143 @@ class Test(unittest.TestCase):
         assert map_inference.map()[0,13]>0.7 # marriedWith(Maria,Giuseppe)
         assert map_inference.map()[0,4]<0.3 # professor(Giuseppe)
 
-    def test_all_possible_assignment_to_a_grounding(self):
+    def test_mutual_exclusive_potential(self):
 
-        return True
+
+        if exit_early_develop():
+            return
+        """Loading Data"""
+        num_examples = 200
+
+        (x_train, hb), (x_test, hb_test) = datasets.mnist_equal(num_examples)
+
+        """Logic description"""
+        o = Ontology()
+
+        images = mme.Domain("Images", data=x_train)
+        numbers = mme.Domain("Numbers", data=np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).T)
+        o.add_domain([images, numbers])
+
+        digit = mme.Predicate("digit", domains=[images, numbers])
+        equal = mme.Predicate("equal", domains=[numbers, numbers])
+        o.add_predicate([digit, equal])
+        indices = np.reshape(np.arange(images.num_constants * numbers.num_constants),
+                             [images.num_constants, numbers.num_constants])
+
+        """Defining a neural model on which to condition our distribution"""
+        nn = tf.keras.Sequential()
+        nn.add(tf.keras.layers.Input(shape=(784,)))
+        nn.add(tf.keras.layers.Dense(100, activation=tf.nn.sigmoid))  # up to the last hidden layer
+        nn.add(tf.keras.layers.Dense(10, use_bias=False))  # up to the last hidden layer
+
+        """Instantiating the supervised potential"""
+        p1 = mme.potentials.SupervisionLogicalPotential(model=nn, indices=indices)
+        p2 = mme.potentials.MutualExclusivityPotential(indices=indices)
+
+        P = mme.potentials.GlobalPotential([p1, p2])
+
+        pwt = mme.PieceWiseTraining(global_potential=P, learning_rate=0.01, y=hb)
+        pwt.compute_beta_logical_potentials()
+
+        p2.beta = 100
+
+        epochs = 100
+        for _ in range(epochs):
+            pwt.maximize_likelihood_step(hb, x=x_train)
+
+        """Inference"""
+        evidence = np.zeros([1, len(hb[0])])
+        evidence[0, num_examples * 10:] = 1
+        evidence_mask = np.array(evidence) > 0
+
+        evidence = np.zeros([1, len(hb[0])])
+        evidence[0, num_examples * 10:] = hb[0, num_examples * 10:]
+        map_inference = mme.inference.FuzzyMAPInference(y_shape=hb.shape,
+                                                        potential=P,
+                                                        logic=mme.logic.ProductLogic,
+                                                        evidence=evidence,
+                                                        evidence_mask=evidence_mask,
+                                                        learning_rate=0.1)
+
+        hb = hb
+        x = x_train
+
+        for i in range(100):
+            map_inference.infer_step(x)
+            print(map_inference.map()[0, :10])
+
+        y_test = tf.reshape(hb[0, :num_examples * 10], [num_examples, 10])
+        y_map = tf.reshape(map_inference.map()[0, :num_examples * 10], [num_examples, 10])
+        y_nn = p1.model(x)
+
+        acc_map = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_map, axis=1)), tf.float32))
+        acc_nn = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_nn, axis=1)), tf.float32))
+
+        assert abs(acc_map.numpy() - acc_nn.numpy()) < 0.1
+
+
+    def test_all_posssible_assignments_given_evidence(self):
+        """test_all_posssible_assignments_given_evidence"""
+
+
+        """Data"""
+        y = [[0, 1, 0,  # friend of
+                 1, 0, 0,
+                 0, 0, 0,
+                 1, 1, 0]]  # smokes
+
+        y_e = [[0, 1, 0,  # friend of
+            1, 0, 0,
+            0, 0, 0,
+            0, 0, 0]]  # smokes -> X is just to say that it will never be used
+
+        m_e = [[1, 1, 1,  # friend of
+            1, 1, 1,
+            1, 1, 1,
+            0, 0, 0]]  # smokes
+
+
+        o = mme.Ontology()
+
+        """Domains"""
+        people = mme.Domain("people", ["Alice", "Bob", "John"])
+        o.add_domain(people)
+
+        """Predicates"""
+        friend_of = mme.Predicate("friendOf", domains=[people, people], given=True)
+        smokes = mme.Predicate("smokes", domains=[people])
+        o.add_predicate([friend_of, smokes])
+
+
+        """Potentials"""
+        p1 = mme.potentials.EvidenceLogicPotential(constraint=mme.Constraint(o,"smokes(x) and friendOf(x,y) -> smokes(y)"),
+                                                   logic = mme.logic.BooleanLogic,
+                                                   evidence=y_e,
+                                                   evidence_mask=m_e)
+
+        p2 = mme.potentials.EvidenceLogicPotential(
+            constraint=mme.Constraint(o, "smokes(x) and smokes(y) <-> friendOf(x,y)"),
+            logic=mme.logic.BooleanLogic,
+            evidence=y_e,
+            evidence_mask=m_e)
+
+        P = mme.potentials.GlobalPotential([p1,p2])
+
+
+        pwt=mme.PieceWiseTraining(global_potential=P, y=y)
+        pwt.compute_beta_logical_potentials()
+
+        assert p1(y=None)==34
+        assert p2(y=None)==23
+
+
+
+
+
+
+
 
 if __name__ == '__main__':
-    # mode = "DEVELOPMENT"
-    mode = "TEST"
+    mode = "DEVELOPMENT"
+    # mode = "TEST"
     unittest.main()

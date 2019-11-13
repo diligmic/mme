@@ -1,7 +1,7 @@
 from .parser import Constraint
 from collections import OrderedDict
 import tensorflow as tf
-from .potentials import LogicPotential, SupervisionLogicalPotential
+from .potentials import LogicPotential, SupervisionLogicalPotential, CountableGroundingPotential
 import numpy as np
 from collections.abc import Iterable
 
@@ -139,18 +139,18 @@ class PieceWiseTraining():
         self.y = y
 
 
-    def compute_beta_logical_potentials(self):
+    def compute_beta_logical_potentials(self, x=None):
         for p in self.global_potential.potentials:
 
-            if isinstance(p, LogicPotential):
+            if isinstance(p, CountableGroundingPotential):
 
                 ntrue = p(y=None)
-                nfalse = 2**p.cardinality - ntrue
+                nfalse = (2**p.cardinality)*p.num_groundings - ntrue
 
-                y = tf.cast(self.y, tf.bool)
-                groundings = p.constraint.ground(herbrand_interpretation=y)
-                avg_data = tf.squeeze(tf.reduce_mean(tf.cast(p.constraint.compile(groundings), tf.float32),axis=1),axis=1)
-                avg_data = tf.where(avg_data>0.5, avg_data -1e-7, avg_data+1e-7)
+                g,x = p.ground(y=self.y, x=x)
+                phi_on_groundings = p.call_on_groundings(g,x)
+                avg_data = tf.reduce_mean(tf.cast(phi_on_groundings, tf.float32),axis=-1)
+                avg_data = tf.abs(avg_data -1e-7)
                 p.beta = tf.math.log(ntrue/nfalse) + tf.math.log(avg_data/(1 - avg_data))
 
 

@@ -424,7 +424,7 @@ class FuzzyMAPInference():
             p.logic = logic
 
         self.y_shape = y_shape
-        self.var_map = tf.Variable(tf.zeros(y_shape))  # marriedWith(Maria,Giuseppe) 13
+        self.var_map = tf.Variable(0.5 * tf.ones(y_shape))  # marriedWith(Maria,Giuseppe) 13
         self.opt = tf.keras.optimizers.Adam(learning_rate)
         self.evidence = evidence
         self.evidence_mask = evidence_mask
@@ -434,13 +434,13 @@ class FuzzyMAPInference():
     def infer_step(self, x=None):
 
             with tf.GradientTape() as tape:
-                y_map = tf.where(self.evidence_mask, (self.evidence+2-1)*4, self.var_map)
-                p_m = - self.potential(tf.sigmoid(y_map), x=x)
+                y_map = tf.where(self.evidence_mask, self.evidence, self.var_map)
+                p_m = - self.potential(tf.clip_by_value(y_map, 0 ,1), x=x)
             grad = tape.gradient(p_m, self.var_map)
             grad_vars = [(grad, self.var_map)]
             self.opt.apply_gradients(grad_vars)
 
     def map(self):
 
-        return tf.where(self.evidence_mask, self.evidence, tf.sigmoid(self.var_map))
+        return tf.clip_by_value(tf.where(self.evidence_mask, self.evidence, self.var_map), 0 ,1)
 

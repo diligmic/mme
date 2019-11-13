@@ -65,7 +65,7 @@ class Operator():
 
 
 def all_combinations(n):
-    l = list(itertools.product([False, True], repeat=3))
+    l = list(itertools.product([False, True], repeat=n))
     return np.array(l).astype(np.float32)
 
 def all_combinations_in_position(n,j):
@@ -88,7 +88,6 @@ class Constraint(object):
         self.variables = OrderedDict()
         self.atoms = []
         self.logic = None
-
         self.expression_tree = self.parse(formula)
 
 
@@ -111,18 +110,43 @@ class Constraint(object):
         #Num groundings of the formula = num grounding of a generic atom
         self.num_groundings = self.atoms[0].num_groundings
 
+        self.num_given = sum([1 for a in self.atoms if a.predicate.given])
+
 
     def all_grounding_assignments(self):
-        #this corresponds to 1 sample, 1 grounding, 2^n possible assignments, v values of a single assignment [1,1, 2^n, n]
+        #this corresponds to 1 sample, 1 grounding, 2^n possible assignments, n values of a single assignment [1,1, 2^n, n]
         n = len(self.atoms)
         l = list(itertools.product([True, False], repeat=n))
         return np.expand_dims(np.expand_dims(np.array(l).astype(np.float32),axis=0), axis=1)
 
-    def all_sample_groundings_given_evidence(self, evidence_mask):
+    def all_sample_groundings_given_evidence(self, evidence, evidence_mask):
 
-        evidence_groundings = self.ground(herbrand_interpretation=evidence_mask)
+        y_e = self.ground(herbrand_interpretation=evidence)
+        y_e = tf.squeeze(y_e, axis=-2) # removing the grounding assignments dimension since we will add it here
+        m_e = self.ground(herbrand_interpretation=evidence_mask)
+        m_e = tf.squeeze(m_e, axis=-2) # removing the grounding assignments dimension since we will add it here
 
+        n_examples = len(y_e)
+        n_groundings = len(y_e[0])
+        n_variables = len(self.atoms)
+        k = n_variables - self.num_given
+        n_assignments = 2**k
 
+        shape = [n_variables, n_examples, n_groundings, 2 ** k]
+
+        indices = tf.where(m_e[0][0] > 0)
+        given = tf.reshape(tf.gather(y_e, tf.squeeze(indices), axis=-1), [1, n_examples, -1, 1])
+        given = tf.cast(tf.tile(given, [1, 1, 1, 2 ** k]), tf.float32)
+        first = tf.scatter_nd(shape=shape, indices=indices, updates=given)
+
+        indices = tf.where(m_e[0][0] < 1)
+        l = list(product([False, True], repeat=k))
+        comb = np.stack(l, axis=1).astype(np.float32)
+        assignments = np.tile(np.reshape(comb, [-1, 1, 1, 2 ** k]), [1, 1, n_groundings, 1])
+        second = tf.scatter_nd(shape=shape, indices=indices, updates=assignments)
+
+        final = tf.transpose(first + second, [1, 2, 3, 0])
+        return final
 
     def _create_or_get_variable(self, id, domain):
         if id in self.variables:
