@@ -1,5 +1,11 @@
 import numpy as np
 import tensorflow as tf
+from sklearn.model_selection import train_test_split
+import scipy.ndimage as img
+import matplotlib.pyplot as plt
+
+np.random.seed = 0
+tf.random.set_seed(0)
 
 def mnist_linked_plus_minus_1(num_examples):
     
@@ -72,3 +78,66 @@ def mnist_equal(num_examples):
     hb_test = __inner__(y_test)
 
     return (x_train, hb_train), (x_test, hb_test)
+
+
+def mnist_follows(num_examples, seed = 0):
+    
+    
+    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+
+    print(len(x_train))
+    if num_examples > len(x_test):
+        raise Exception("I cannot create a test of this size.")
+
+
+    _,x_train, _, y_train = train_test_split(x_train, y_train, test_size=num_examples, stratify=y_train, random_state=seed)
+    _,x_test, _, y_test = train_test_split(x_test, y_test, test_size=num_examples, stratify=y_test, random_state=seed)
+
+
+    def _inner(x,y):
+
+        x_new = []
+        for I in x:
+            I = I / 255
+            # I = img.rotate(I, float(np.random.rand() * 90), reshape=False)
+            # I = I + 0.3 * np.random.randn(28,28)
+            x_new.append(I)
+        x = np.reshape(x_new, [-1, 28*28])
+
+
+
+        links = np.zeros([num_examples,num_examples])
+        for i,y_i in enumerate(y):
+            for j, y_j in enumerate(y):
+
+                if y_i == y_j + 1:
+                    # if np.random.rand() < 0.9:
+                        links[i,j] = 1
+                else:
+                    if np.random.rand() < 0.1:
+                        links[i,j] = 1
+        links = np.reshape(links, [1, -1])
+
+        follows = np.zeros([10,10])
+        for i in range(10):
+            for j in range(10):
+                if i == j + 1:
+                    follows[i,j] = 1
+        follows = np.reshape(follows, [1, -1])
+
+        y = np.eye(10)[y]
+        digit = np.reshape(y, [1, -1])
+
+        hb = np.concatenate((digit, links, follows), axis=1)
+
+        return (x,hb)
+
+
+    return _inner(x_train, y_train), _inner(x_test, y_test)
+
+
+
+
+
+
+    

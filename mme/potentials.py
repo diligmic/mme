@@ -37,8 +37,8 @@ class CountableGroundingPotential(Potential):
         return r
 
     @property
-    def num_grounding(self):
-        return self.constraint.num_groundings
+    def num_groundings(self):
+        pass
 
 
 
@@ -97,34 +97,34 @@ class GlobalPotential(tf.Module):
 
 class LogicPotential(CountableGroundingPotential):
 
-    def __init__(self, constraint, logic):
+    def __init__(self, formula, logic):
         super(LogicPotential, self).__init__()
-        self.constraint = constraint
+        self.formula = formula
         self.logic = logic
 
     @property
     def cardinality(self):
-        return len([0 for i in self.constraint.atoms if not i.predicate.given])
+        return len([0 for i in self.formula.atoms if not i.predicate.given])
 
     @property
     def num_grounding(self):
-        return self.constraint.num_groundings
+        return self.formula.num_groundings
 
     def ground(self, y, x=None):
         if y is not None:
-            groundings = self.constraint.ground(herbrand_interpretation=y) # num_examples, num_groundings, 1, num_variables_in_grounding
+            groundings = self.formula.ground(herbrand_interpretation=y) # num_examples, num_groundings, 1, num_variables_in_grounding
         else:
-            groundings = self.constraint.all_grounding_assignments()
+            groundings = self.formula.all_grounding_assignments()
         return groundings, x
 
     def call_on_groundings(self, y, x=None):
-        t = self.constraint.compile(groundings=y, logic=self.logic) # num_examples, num_groundings, num_possible_assignment_to_groundings
+        t = self.formula.compile(groundings=y, logic=self.logic) # num_examples, num_groundings, num_possible_assignment_to_groundings
         t = tf.cast(t, tf.float32)
         return tf.reduce_sum(t, axis=-1)
 
     @property
     def num_groundings(self):
-        return self.constraint.num_groundings
+        return self.formula.num_groundings
 
 
 
@@ -164,7 +164,7 @@ class MutualExclusivityPotential(CountableGroundingPotential):
 
     @property
     def num_groundings(self):
-        return len(self.indices[0])
+        return len(self.indices)
 
     def ground(self, y, x=None):
         if y is not None:
@@ -175,7 +175,7 @@ class MutualExclusivityPotential(CountableGroundingPotential):
 
     def call_on_groundings(self, y, x=None):
         if y is None:
-            return tf.ones([1, self.cardinality])
+            return self.cardinality * tf.ones([1, self.num_groundings])
         else:
             y = tf.cast(y, tf.float32)
         n = len(y.shape)-1
@@ -195,30 +195,30 @@ class MutualExclusivityPotential(CountableGroundingPotential):
 
 class EvidenceLogicPotential(CountableGroundingPotential):
 
-    def __init__(self, constraint, logic, evidence, evidence_mask):
+    def __init__(self, formula, logic, evidence, evidence_mask):
         super(EvidenceLogicPotential, self).__init__()
-        self.constraint = constraint
+        self.formula = formula
         self.logic = logic
         self.evidence = evidence
         self.evidence_mask = evidence_mask
 
     @property
     def cardinality(self):
-        return len([0 for i in self.constraint.atoms if not i.predicate.given])
+        return len([0 for i in self.formula.atoms if not i.predicate.given])
 
     @property
     def num_groundings(self):
-        return self.constraint.num_groundings
+        return self.formula.num_groundings
 
     def ground(self, y, x=None):
         if y is not None:
-            groundings = self.constraint.ground(herbrand_interpretation=y) # num_examples, num_groundings, 1, num_variables_in_grounding
+            groundings = self.formula.ground(herbrand_interpretation=y) # num_examples, num_groundings, 1, num_variables_in_grounding
         else:
-            groundings = self.constraint.all_sample_groundings_given_evidence(evidence=self.evidence, evidence_mask=self.evidence_mask)
+            groundings = self.formula.all_sample_groundings_given_evidence(evidence=self.evidence, evidence_mask=self.evidence_mask)
         return groundings, x
 
     def call_on_groundings(self, y, x=None):
-        t = self.constraint.compile(groundings=y, logic=self.logic) # num_examples, num_groundings, num_possible_assignment_to_groundings
+        t = self.formula.compile(groundings=y, logic=self.logic) # num_examples, num_groundings, num_possible_assignment_to_groundings
         t = tf.cast(t, tf.float32)
         return tf.reduce_sum(t, axis=-1)
 

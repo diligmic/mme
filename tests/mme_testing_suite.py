@@ -546,6 +546,8 @@ class Test(unittest.TestCase):
         digit = mme.Predicate("digit", domains=[images, numbers])
         equal = mme.Predicate("equal", domains=[numbers, numbers])
         o.add_predicate([digit, equal])
+
+
         indices = np.reshape(np.arange(images.num_constants * numbers.num_constants),
                              [images.num_constants, numbers.num_constants])
 
@@ -635,13 +637,13 @@ class Test(unittest.TestCase):
 
 
         """Potentials"""
-        p1 = mme.potentials.EvidenceLogicPotential(constraint=mme.Constraint(o,"smokes(x) and friendOf(x,y) -> smokes(y)"),
+        p1 = mme.potentials.EvidenceLogicPotential(formula=mme.Formula(o, "smokes(x) and friendOf(x,y) -> smokes(y)"),
                                                    logic = mme.logic.BooleanLogic,
                                                    evidence=y_e,
                                                    evidence_mask=m_e)
 
         p2 = mme.potentials.EvidenceLogicPotential(
-            constraint=mme.Constraint(o, "smokes(x) and smokes(y) <-> friendOf(x,y)"),
+            formula=mme.Formula(o, "smokes(x) and smokes(y) <-> friendOf(x,y)"),
             logic=mme.logic.BooleanLogic,
             evidence=y_e,
             evidence_mask=m_e)
@@ -654,11 +656,6 @@ class Test(unittest.TestCase):
 
         assert p1(y=None)==34
         assert p2(y=None)==23
-
-
-
-
-
 
 
 

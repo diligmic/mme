@@ -1,4 +1,4 @@
-from .parser import Constraint
+from .parser import Formula
 from collections import OrderedDict
 import tensorflow as tf
 from .potentials import LogicPotential, SupervisionLogicalPotential, CountableGroundingPotential
@@ -75,7 +75,7 @@ class Ontology():
 
     def get_constraint(self,formula):
 
-        return Constraint(self, formula)
+        return Formula(self, formula)
 
 
 class MonteCarloTraining():

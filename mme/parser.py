@@ -81,14 +81,14 @@ def all_combinations_in_position(n,j):
     base_f = np.reshape(base_t, [-1])
     return base_f
 
-class Constraint(object):
+class Formula(object):
 
-    def __init__(self, ontology, formula):
+    def __init__(self, ontology, definition):
         self.ontology = ontology
         self.variables = OrderedDict()
         self.atoms = []
         self.logic = None
-        self.expression_tree = self.parse(formula)
+        self.expression_tree = self.parse(definition)
 
 
         # Computing Variable indices
@@ -126,6 +126,7 @@ class Constraint(object):
         m_e = self.ground(herbrand_interpretation=evidence_mask)
         m_e = tf.squeeze(m_e, axis=-2) # removing the grounding assignments dimension since we will add it here
 
+
         n_examples = len(y_e)
         n_groundings = len(y_e[0])
         n_variables = len(self.atoms)
@@ -135,14 +136,16 @@ class Constraint(object):
         shape = [n_variables, n_examples, n_groundings, 2 ** k]
 
         indices = tf.where(m_e[0][0] > 0)
-        given = tf.reshape(tf.gather(y_e, tf.squeeze(indices), axis=-1), [1, n_examples, -1, 1])
+        given = tf.gather(y_e, tf.reshape(indices,[-1]), axis=-1)
+        given = tf.transpose(given, [2,1,0])
+        given = tf.reshape(given, [self.num_given, n_examples, n_groundings, 1])
         given = tf.cast(tf.tile(given, [1, 1, 1, 2 ** k]), tf.float32)
         first = tf.scatter_nd(shape=shape, indices=indices, updates=given)
 
-        indices = tf.where(m_e[0][0] < 1)
+        indices = tf.where(m_e[0][0]  < 1)
         l = list(product([False, True], repeat=k))
         comb = np.stack(l, axis=1).astype(np.float32)
-        assignments = np.tile(np.reshape(comb, [-1, 1, 1, 2 ** k]), [1, 1, n_groundings, 1])
+        assignments = np.tile(np.reshape(comb, [-1, 1, 1, 2 ** k]), [1, n_examples, n_groundings, 1])
         second = tf.scatter_nd(shape=shape, indices=indices, updates=assignments)
 
         final = tf.transpose(first + second, [1, 2, 3, 0])

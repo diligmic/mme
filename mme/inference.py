@@ -1,5 +1,5 @@
 import tensorflow as tf
-import tensorflow_probability as tfp
+# import tensorflow_probability as tfp
 import numpy as np
 
 class Sampler(object):
@@ -342,77 +342,77 @@ class GPUGibbsSampler(Sampler):
         # samples = tf.reshape(samples,[-1, self.num_variables]) #todo(Giuseppe) check if was it necessary with minibatches
         return tf.concat(samples,axis=1)[:,:num_samples,:]
 
-
-
-class PartialGPUGibbsKernelTF1(tfp.mcmc.TransitionKernel):
-
-    def __init__(self, potential, conditional_data, flips, evidence_mask=None):
-        super(PartialGPUGibbsKernel, self).__init__()
-        self.potential = potential
-        self.masks = []
-        self.evidence_mask = evidence_mask if evidence_mask is not None else None
-        self.flips = flips
-        self.conditional_data = conditional_data
-
-    @tf.function()
-    def one_step(self, current_state, previous_kernel_results):
-
-        num_examples = current_state.get_shape()[0].value
-        num_variables = current_state.get_shape()[1].value
-
-        P = tf.zeros([num_examples])
-        OFF = tf.constant(0.)
-        ON = tf.constant(0.)
-        DELTA = tf.constant(0.)
-        i = [tf.constant(0, dtype=tf.int32),current_state,P, OFF, ON, DELTA]
-        c = lambda i,s,p,off,on,delta: i < self.flips
-
-        def body(i,s,P,OFF, ON, DELTA):
-            if self.evidence_mask is not None:
-                k = tf.squeeze(tf.multinomial(tf.log(1 - tf.cast(self.evidence_mask, tf.float32)), 1, output_dtype=tf.int32))
-            else:
-                k = tf.random_uniform(minval=0,
-                                      maxval=num_variables,
-                                      dtype=tf.int32,
-                                      shape=())
-            mask = tf.one_hot(k, depth=num_variables)
-            off_state = s * (1 - mask)
-            on_state = off_state + mask
-            rand = tf.random_uniform(shape=[num_examples])
-
-            #Time efficient
-            potential_on = self.potential(on_state, x=self.conditional_data)
-            potential_off = self.potential(off_state, x=self.conditional_data)
-            delta_potential = tf.abs(potential_on - potential_off)
-            p = tf.reshape(tf.sigmoid(potential_on - potential_off), [-1])
-            #Memory Efficient
-            # energy_on = self.model.compute_energy(on_state)
-            # energy_off = self.model.compute_energy(off_state)
-            # p = tf.reshape(tf.sigmoid(- energy_on + energy_off), [-1])
-
-            cond = rand < p
-            current_state = tf.where(cond, on_state, off_state)
-            if self.evidence_mask is not None:
-                current_state= tf.cond(tf.equal(self.evidence_mask[0, i],1), lambda: s, lambda: current_state)
-            i = i+1
-            OFF = OFF + tf.reduce_sum(potential_off)
-            ON = ON + tf.reduce_sum(potential_on)
-            DELTA = DELTA + tf.reduce_sum(delta_potential)
-            return i,current_state, p, OFF, ON, DELTA
-
-        i,r,p, OFF,ON, DELTA = tf.while_loop(c, body, i)
-        return r, [p, OFF/(num_examples*self.flips),ON/(num_examples*self.flips), DELTA/(num_examples*self.flips)]
-
-    @tf.function()
-    def is_calibrated(self):
-        return True
-
-    @tf.function()
-    def bootstrap_results(self, init_state):
-        num_examples = init_state.get_shape()[0]
-        return [tf.zeros([num_examples]), tf.constant(0.), tf.constant(0.), tf.constant(0.)]
-
-
+#
+#
+# class PartialGPUGibbsKernelTF1(tfp.mcmc.TransitionKernel):
+#
+#     def __init__(self, potential, conditional_data, flips, evidence_mask=None):
+#         super(PartialGPUGibbsKernel, self).__init__()
+#         self.potential = potential
+#         self.masks = []
+#         self.evidence_mask = evidence_mask if evidence_mask is not None else None
+#         self.flips = flips
+#         self.conditional_data = conditional_data
+#
+#     @tf.function()
+#     def one_step(self, current_state, previous_kernel_results):
+#
+#         num_examples = current_state.get_shape()[0].value
+#         num_variables = current_state.get_shape()[1].value
+#
+#         P = tf.zeros([num_examples])
+#         OFF = tf.constant(0.)
+#         ON = tf.constant(0.)
+#         DELTA = tf.constant(0.)
+#         i = [tf.constant(0, dtype=tf.int32),current_state,P, OFF, ON, DELTA]
+#         c = lambda i,s,p,off,on,delta: i < self.flips
+#
+#         def body(i,s,P,OFF, ON, DELTA):
+#             if self.evidence_mask is not None:
+#                 k = tf.squeeze(tf.multinomial(tf.log(1 - tf.cast(self.evidence_mask, tf.float32)), 1, output_dtype=tf.int32))
+#             else:
+#                 k = tf.random_uniform(minval=0,
+#                                       maxval=num_variables,
+#                                       dtype=tf.int32,
+#                                       shape=())
+#             mask = tf.one_hot(k, depth=num_variables)
+#             off_state = s * (1 - mask)
+#             on_state = off_state + mask
+#             rand = tf.random_uniform(shape=[num_examples])
+#
+#             #Time efficient
+#             potential_on = self.potential(on_state, x=self.conditional_data)
+#             potential_off = self.potential(off_state, x=self.conditional_data)
+#             delta_potential = tf.abs(potential_on - potential_off)
+#             p = tf.reshape(tf.sigmoid(potential_on - potential_off), [-1])
+#             #Memory Efficient
+#             # energy_on = self.model.compute_energy(on_state)
+#             # energy_off = self.model.compute_energy(off_state)
+#             # p = tf.reshape(tf.sigmoid(- energy_on + energy_off), [-1])
+#
+#             cond = rand < p
+#             current_state = tf.where(cond, on_state, off_state)
+#             if self.evidence_mask is not None:
+#                 current_state= tf.cond(tf.equal(self.evidence_mask[0, i],1), lambda: s, lambda: current_state)
+#             i = i+1
+#             OFF = OFF + tf.reduce_sum(potential_off)
+#             ON = ON + tf.reduce_sum(potential_on)
+#             DELTA = DELTA + tf.reduce_sum(delta_potential)
+#             return i,current_state, p, OFF, ON, DELTA
+#
+#         i,r,p, OFF,ON, DELTA = tf.while_loop(c, body, i)
+#         return r, [p, OFF/(num_examples*self.flips),ON/(num_examples*self.flips), DELTA/(num_examples*self.flips)]
+#
+#     @tf.function()
+#     def is_calibrated(self):
+#         return True
+#
+#     @tf.function()
+#     def bootstrap_results(self, init_state):
+#         num_examples = init_state.get_shape()[0]
+#         return [tf.zeros([num_examples]), tf.constant(0.), tf.constant(0.), tf.constant(0.)]
+#
+#
 
 class FuzzyMAPInference():
 
@@ -434,13 +434,12 @@ class FuzzyMAPInference():
     def infer_step(self, x=None):
 
             with tf.GradientTape() as tape:
-                y_map = tf.where(self.evidence_mask, self.evidence, self.var_map)
-                p_m = - self.potential(tf.clip_by_value(y_map, 0 ,1), x=x)
+                p_m = - self.potential(self.map(), x=x)
             grad = tape.gradient(p_m, self.var_map)
             grad_vars = [(grad, self.var_map)]
             self.opt.apply_gradients(grad_vars)
 
     def map(self):
-
-        return tf.clip_by_value(tf.where(self.evidence_mask, self.evidence, self.var_map), 0 ,1)
+        y_map = tf.where(self.evidence_mask, self.evidence, self.var_map)
+        return tf.sigmoid(10*(y_map - 0.5))
 
