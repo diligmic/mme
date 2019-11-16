@@ -12,16 +12,18 @@ tf.get_logger().setLevel('ERROR')
 def main(lr,seed,perc_soft,l2w):
 
 
-    num_examples = 50
 
-    (x_train, hb_train), (x_test, hb_test) = datasets.mnist_follows(num_examples, seed=0, perc_soft = perc_soft)
+    (x_train, hb_train), (x_test, hb_test) = datasets.citeseer()
+    num_examples = len(x_train)
+    num_classes = 6
+
 
     #I set the seed after since i want the dataset to be always the same
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
     m_e = np.zeros_like(hb_train)
-    m_e[:, num_examples*10:] = 1
+    m_e[:, num_examples*num_classes:] = 1
 
     y_e_train = hb_train * m_e
     y_e_test = hb_test * m_e
@@ -30,49 +32,70 @@ def main(lr,seed,perc_soft,l2w):
     o = mme.Ontology()
 
     #Domains
-    images = mme.Domain("Images", data=x_train)
-    numbers = mme.Domain("Numbers", data=np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).T)
-    o.add_domain([images, numbers])
+    docs = mme.Domain("Documents", data=x_train)
+    o.add_domain([docs])
 
     # Predicates
-    digit = mme.Predicate("digit", domains=[images, numbers])
-    links = mme.Predicate("links", domains=[images, images], given=True)
-    follows = mme.Predicate("follows", domains=[numbers, numbers], given=True)
-    o.add_predicate([digit, links, follows])
+
+    preds = ["ag","ai", "db","ir","ml","hci"]
+    for name in preds:
+        p = mme.Predicate(name, domains=[docs])
+        o.add_predicate(p)
+
+    cite = mme.Predicate("cite", domains=[docs,docs], given=True)
+    o.add_predicate(cite)
 
     """MME definition"""
-
+    potentials = []
     #Supervision
-    indices = np.reshape(np.arange(images.num_constants * numbers.num_constants),
-                         [images.num_constants, numbers.num_constants])
+    indices = np.reshape(np.arange(num_classes * docs.num_constants),
+                         [num_classes, docs.num_constants]).T # T because we made classes as unary potentials
     nn = tf.keras.Sequential()
-    nn.add(tf.keras.layers.Input(shape=(784,)))
+    nn.add(tf.keras.layers.Input(shape=(x_train.shape[1],)))
     nn.add(tf.keras.layers.Dense(100, activation=tf.nn.sigmoid, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
-    nn.add(tf.keras.layers.Dense(10,use_bias=False))
+    nn.add(tf.keras.layers.Dense(num_classes,use_bias=False))
     p1 = mme.potentials.SupervisionLogicalPotential(nn, indices)
+    potentials.append(p1)
 
     #Mutual Exclusivity (needed for inference , since SupervisionLogicalPotential already subsumes it during training)
     p2 = mme.potentials.MutualExclusivityPotential(indices=indices)
+    potentials.append(p2)
 
     #Logical
-    c = mme.Formula(definition="links(x,y) and digit(x,i) and digit(y,j) -> follows(i,j)", ontology=o)
-    p3 = mme.potentials.EvidenceLogicPotential(formula=c,
-                                               logic=mme.logic.BooleanLogic,
-                                               evidence=y_e_train,
-                                               evidence_mask=m_e)
+    logical_preds = []
+    for name in preds:
+        c = mme.Formula(definition="%s(x) and cite(x,y) -> %s(y)" % (name,name), ontology=o)
+        p3 = mme.potentials.EvidenceLogicPotential(formula=c,logic=mme.logic.BooleanLogic, evidence=y_e_train, evidence_mask=m_e)
+        potentials.append(p3)
 
 
-
-    P = mme.potentials.GlobalPotential([p1,p2,p3])
+    P = mme.potentials.GlobalPotential(potentials)
 
 
     pwt = mme.PieceWiseTraining(global_potential=P, y=hb_train)
     pwt.compute_beta_logical_potentials()
+    for p in potentials:
+        print(p, p.beta)
+    P.save_weights("citeseer_pretrain")
+
 
 
     epochs = 150
+    y_test = tf.gather(hb_test[0], indices, axis=1)
     for _ in range(epochs):
         pwt.maximize_likelihood_step(hb_train, x=x_train)
+        y_nn = tf.nn.softmax(nn(x_test))
+        acc_nn = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_nn, axis=1)), tf.float32))
+        print(acc_nn)
+    P.save_weights("citeseer_post_train")
+
+
+    #Test accuracy after supervised step
+    y_nn = tf.nn.softmax(nn(x_test))
+    acc_nn = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_nn, axis=1)), tf.float32))
+    print(acc_nn)
+    exit()
+
 
     """Inference"""
     steps_map = 500
@@ -89,18 +112,18 @@ def main(lr,seed,perc_soft,l2w):
                                                     evidence_mask=evidence_mask,
                                                     learning_rate= lr) #tf.keras.optimizers.schedules.ExponentialDecay(lr, decay_steps=steps_map, decay_rate=0.96, staircase=True))
 
-    y_test = tf.reshape(hb[0, :num_examples * 10], [num_examples, 10])
+    y_test = tf.reshape(hb[0, :num_examples * num_classes], [num_examples, num_classes])
     for i in range(steps_map):
         map_inference.infer_step(x)
         if i % 10 == 0:
-            y_map = tf.reshape(map_inference.map()[0, :num_examples * 10], [num_examples, 10])
+            y_map = tf.reshape(map_inference.map()[0, :num_examples * num_classes], [num_examples, num_classes])
             acc_map = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_map, axis=1)), tf.float32))
             print("Accuracy MAP", acc_map.numpy())
 
         if mme.utils.heardEnter():
             break
 
-    y_map = tf.reshape(map_inference.map()[0, :num_examples * 10], [num_examples, 10])
+    y_map = tf.reshape(map_inference.map()[0, :num_examples * num_classes], [num_examples, num_classes])
     y_nn = p1.model(x)
 
     acc_map = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_map, axis=1)), tf.float32))

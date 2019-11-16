@@ -4,8 +4,8 @@ from sklearn.model_selection import train_test_split
 import scipy.ndimage as img
 import matplotlib.pyplot as plt
 
-np.random.seed = 0
-tf.random.set_seed(0)
+np.random.seed(0)
+
 
 def mnist_linked_plus_minus_1(num_examples):
     
@@ -80,8 +80,7 @@ def mnist_equal(num_examples):
     return (x_train, hb_train), (x_test, hb_test)
 
 
-def mnist_follows(num_examples, seed = 0):
-    
+def mnist_follows(num_examples, seed = 0, perc_soft=0.1):
     
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
 
@@ -90,8 +89,8 @@ def mnist_follows(num_examples, seed = 0):
         raise Exception("I cannot create a test of this size.")
 
 
-    _,x_train, _, y_train = train_test_split(x_train, y_train, test_size=num_examples, stratify=y_train, random_state=seed)
-    _,x_test, _, y_test = train_test_split(x_test, y_test, test_size=num_examples, stratify=y_test, random_state=seed)
+    _,x_train, _, y_train = train_test_split(x_train, y_train, test_size=num_examples, stratify=y_train, random_state=0)
+    _,x_test, _, y_test = train_test_split(x_test, y_test, test_size=num_examples, stratify=y_test, random_state=0)
 
 
     def _inner(x,y):
@@ -104,8 +103,6 @@ def mnist_follows(num_examples, seed = 0):
             x_new.append(I)
         x = np.reshape(x_new, [-1, 28*28])
 
-
-
         links = np.zeros([num_examples,num_examples])
         for i,y_i in enumerate(y):
             for j, y_j in enumerate(y):
@@ -114,7 +111,8 @@ def mnist_follows(num_examples, seed = 0):
                     # if np.random.rand() < 0.9:
                         links[i,j] = 1
                 else:
-                    if np.random.rand() < 0.1:
+                    r = np.random.rand()
+                    if  r < perc_soft:
                         links[i,j] = 1
         links = np.reshape(links, [1, -1])
 
@@ -134,6 +132,34 @@ def mnist_follows(num_examples, seed = 0):
 
 
     return _inner(x_train, y_train), _inner(x_test, y_test)
+
+
+
+def citeseer():
+    documents = np.load("data/citeseer/words.npy")
+    labels = np.load("data/citeseer/labels.npy")
+    labels = np.eye(6)[labels]
+    citations = np.load("data/citeseer/citations.npy")
+    num_documents = len(documents)
+
+
+    def _inner_take_hb(idx):
+
+        x = documents[idx]
+        l = np.reshape(labels[idx].T, [1, -1])
+        c = np.reshape(citations[idx][:,idx], [1, -1])
+
+        hb = np.concatenate((l,c), axis=1)
+
+        return x, hb
+
+
+
+    trid, teid = train_test_split(np.arange(num_documents), test_size=num_documents//2)
+
+    return _inner_take_hb(trid), _inner_take_hb(teid)
+
+
 
 
 

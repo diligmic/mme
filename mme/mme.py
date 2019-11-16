@@ -144,14 +144,18 @@ class PieceWiseTraining():
 
             if isinstance(p, CountableGroundingPotential):
 
+                print("Computing beta of %s" % (p))
                 ntrue = p(y=None)
                 nfalse = (2**p.cardinality)*p.num_groundings - ntrue
 
                 g,x = p.ground(y=self.y, x=x)
                 phi_on_groundings = p.call_on_groundings(g,x)
                 avg_data = tf.reduce_mean(tf.cast(phi_on_groundings, tf.float32),axis=-1)
-                avg_data = tf.abs(avg_data -1e-7)
+                # avg_data = tf.abs(avg_data -  1e-7)
                 p.beta = tf.math.log(ntrue/nfalse) + tf.math.log(avg_data/(1 - avg_data))
+                if p.beta == np.inf:
+                    p.beta = 100
+                print(p, p.beta)
 
 
     def maximize_likelihood_step(self, y, x=None):
@@ -171,7 +175,8 @@ class PieceWiseTraining():
 
                     y = p._reshape_y(y)
                     o = p.model(x)
-                    xent = tf.nn.softmax_cross_entropy_with_logits(logits = o, labels=y)
+                    xent = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits = o, labels=y))
+                    xent += tf.reduce_sum(p.model.losses)
 
 
                 grad = tape.gradient(target=xent, sources=p.model.variables)
