@@ -2,10 +2,12 @@ import tensorflow as tf
 import numpy as np
 import abc
 
+
+
 class Potential(tf.Module):
 
     def __init__(self):
-        super(Potential, self).__init__()
+        tf.Module.__init__(self)
         self.beta = tf.Variable(initial_value=tf.zeros(shape=()))
 
     @property
@@ -81,7 +83,7 @@ class FragmentedPotential(Potential):
 class GlobalPotential(tf.Module):
 
     def __init__(self, potentials=()):
-
+        super(GlobalPotential, self).__init__()
         self.potentials = list(potentials)
 
     def add(self, potential):
@@ -93,6 +95,17 @@ class GlobalPotential(tf.Module):
             n = Phi.beta * Phi(y,x)
             res = res + n
         return res
+
+
+    def save(self, path):
+        print(self.variables)
+        ckpt = tf.train.Checkpoint(obj = self)
+        ckpt.save(path)
+
+    def restore(self, path):
+
+        ckpt = tf.train.Checkpoint(obj = self)
+        ckpt.restore(path)
 
 
 class LogicPotential(CountableGroundingPotential):
@@ -218,6 +231,7 @@ class EvidenceLogicPotential(CountableGroundingPotential):
         return groundings, x
 
     def call_on_groundings(self, y, x=None):
+        y = self.logic.cast(y)
         t = self.formula.compile(groundings=y, logic=self.logic) # num_examples, num_groundings, num_possible_assignment_to_groundings
         t = tf.cast(t, tf.float32)
         return tf.reduce_sum(t, axis=-1)

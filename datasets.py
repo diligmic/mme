@@ -162,6 +162,32 @@ def citeseer():
 
 
 
+def citeseer_em():
+    documents = np.load("data/citeseer/words.npy")
+    labels = np.load("data/citeseer/labels.npy")
+    labels = np.eye(6)[labels]
+    citations = np.load("data/citeseer/citations.npy")
+    num_documents = len(documents)
+
+    trid, teid = train_test_split(np.arange(num_documents), test_size=num_documents//2, random_state=0)
+    mask_on_labels = np.zeros_like(labels)
+    mask_on_labels[trid] = 1
+
+    l = np.reshape(labels.T, [1, -1])
+    c = np.reshape(citations, [1, -1])
+    me_per_inference = np.reshape(mask_on_labels.T, [1, -1])
+
+    me_per_inference = np.concatenate((me_per_inference, np.ones([1, num_documents**2])), axis=1)
+    me_per_training = np.concatenate((np.zeros([1, num_documents*6]), np.ones([1, num_documents**2])), axis=1)
+    hb_all = np.concatenate((l,c), axis=1)
+
+
+
+    return documents, trid, teid, hb_all, me_per_inference, me_per_training, labels, mask_on_labels
+
+
+
+
 
 
 

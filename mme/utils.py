@@ -1,4 +1,5 @@
 import os, select, sys
+import pickle
 
 if os.name == 'nt':
     import msvcrt
@@ -20,3 +21,13 @@ def heardEnter():
                 input = sys.stdin.readline()
                 return True
         return False
+
+def save(path, o):
+    with open(path, 'wb') as handle:
+        pickle.dump(o, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def restore(path):
+    with open(path, 'rb') as handle:
+        o = pickle.load(handle)
+    return o
