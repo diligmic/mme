@@ -155,7 +155,7 @@ def citeseer():
 
 
 
-    trid, teid = train_test_split(np.arange(num_documents), test_size=num_documents//2)
+    trid, teid = train_test_split(np.arange(num_documents), test_size=num_documents//2, random_state=0)
 
     return _inner_take_hb(trid), _inner_take_hb(teid)
 
