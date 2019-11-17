@@ -12,7 +12,8 @@ tf.get_logger().setLevel('ERROR')
 def main(lr,seed,perc_soft,l2w):
 
 
-    num_examples = 50
+
+    num_examples = 200
 
     (x_train, hb_train), (x_test, hb_test) = datasets.mnist_follows(num_examples, seed=0, perc_soft = perc_soft)
 

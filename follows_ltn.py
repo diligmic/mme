@@ -10,7 +10,7 @@ tf.get_logger().setLevel('ERROR')
 
 
 def main(lr, seed, perc_soft, l2w=0.01, w_rule=0.01):
-    num_examples = 50
+    num_examples = 200
 
     (x_train, hb_train), (x_test, hb_test) = datasets.mnist_follows(num_examples, seed=0, perc_soft=perc_soft)
 
@@ -75,8 +75,8 @@ def main(lr, seed, perc_soft, l2w=0.01, w_rule=0.01):
 
                 c = mme.Formula(definition="links(x,y) and digit(x,i) and digit(y,j) -> follows(i,j)", ontology=o)
                 groundings = c.ground(herbrand_interpretation=hb_model_train)
-                logical_loss = tf.reduce_sum(c.num_groundings - c.compile(groundings, mme.logic.LukasiewiczLogic))
-                total_loss += logical_loss
+                logical_loss = tf.reduce_sum(- c.compile(groundings, mme.logic.LukasiewiczLogic))
+                total_loss += w_rule*logical_loss
 
         grads = tape.gradient(target=total_loss, sources=nn.variables)
         grad_vars = zip(grads, nn.variables)
@@ -96,8 +96,9 @@ def main(lr, seed, perc_soft, l2w=0.01, w_rule=0.01):
         # if mme.utils.heardEnter(): break
     y_nn = tf.nn.softmax(nn(x_test))
     acc_nn = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_nn, axis=1)), tf.float32))
+    print(acc_nn)
 
-
+    if logic: return acc_nn,acc_nn
 
 
     print("MAP Inference")
@@ -155,7 +156,7 @@ if __name__ == "__main__":
     res = []
     seed = 0
 
-    for lr, perc, w_rule,  in product([1, 0.3, 0.1, 0.06, 0.03, 0.01]
+    for lr, perc, w_rule,  in product([1, 0.3, 0.1, 0.06, 0.03]
                               ,[0., 0.05, 0.08, 0.1, 0.2, 0.3, 0.5, 0.8, 1]
                               ,[0.1, 1., 10., 100],):
         acc_nn, acc_map = main(lr=lr, seed=seed, perc_soft=perc, w_rule=w_rule)
@@ -163,9 +164,11 @@ if __name__ == "__main__":
         for i in res:
             print(i)
 
-    with open("res_lyrics", "w") as file:
+
+    with open("res_lyrics_cc", "a") as file:
         file.write("lr,perc,w_rule,acc_nn, acc_map\n")
         file.writelines(res)
+
 
 
 
