@@ -132,30 +132,32 @@ class MonteCarloTraining():
 
 class PieceWiseTraining():
 
-    def __init__(self, global_potential, y, learning_rate=0.001, minibatch = None):
+    def __init__(self, global_potential, y=None, learning_rate=0.001, minibatch = None):
         self.global_potential = global_potential
         self.optimizer = tf.keras.optimizers.Adam(learning_rate)
         self.minibatch = minibatch # list of indices to gather from data
         self.y = y
 
 
-    def compute_beta_logical_potentials(self, x=None):
+    def compute_beta_logical_potentials(self, y=None, x=None):
+
+        if y is None:
+            y=self.y
         for p in self.global_potential.potentials:
 
             if isinstance(p, CountableGroundingPotential):
 
-                print("Computing beta of %s" % (p))
                 ntrue = p(y=None)
                 nfalse = (2**p.cardinality)*p.num_groundings - ntrue
+                # nfalse = (2**p.cardinality) - ntrue
 
-                g,x = p.ground(y=self.y, x=x)
+                g,x = p.ground(y=y, x=x)
                 phi_on_groundings = p.call_on_groundings(g,x)
                 avg_data = tf.reduce_mean(tf.cast(phi_on_groundings, tf.float32),axis=-1)
                 # avg_data = tf.abs(avg_data -  1e-7)
                 p.beta = tf.math.log(ntrue/nfalse) + tf.math.log(avg_data/(1 - avg_data))
                 if p.beta == np.inf:
-                    p.beta = 100
-                print(p, p.beta)
+                    p.beta = tf.Variable(5.)
 
 
     def maximize_likelihood_step(self, y, x=None):

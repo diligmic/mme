@@ -414,7 +414,7 @@ import numpy as np
 
 class FuzzyMAPInference():
 
-    def __init__(self, y_shape, potential, logic, evidence, evidence_mask, learning_rate=0.001):
+    def __init__(self, y_shape, potential, logic, evidence, evidence_mask, learning_rate=0.001, initial_value=None):
 
         # MAP
         self.potential = potential
@@ -422,7 +422,7 @@ class FuzzyMAPInference():
             p.logic = logic
 
         self.y_shape = y_shape
-        self.var_map = tf.Variable(0.5 * tf.ones(y_shape))
+        self.var_map =  tf.Variable(initial_value) if initial_value is not None else tf.Variable(0.5 * tf.ones(y_shape))
         self.opt = tf.keras.optimizers.Adam(learning_rate)
         self.evidence = evidence
         self.evidence_mask = evidence_mask
@@ -432,7 +432,8 @@ class FuzzyMAPInference():
     def infer_step(self, x=None):
 
             with tf.GradientTape() as tape:
-                p_m = - self.potential(self.map(), x=x)
+                y = self.map()
+                p_m = - self.potential(y, x=x)
             grad = tape.gradient(p_m, self.var_map)
             grad_vars = [(grad, self.var_map)]
             self.opt.apply_gradients(grad_vars)

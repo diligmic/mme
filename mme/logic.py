@@ -3,6 +3,10 @@ import tensorflow as tf
 class BooleanLogic():
 
     @staticmethod
+    def cast(y):
+        return tf.cast(y, tf.bool)
+
+    @staticmethod
     def _not(args):
         assert len(args)==1, "N-Ary negation not defined"
         args = [tf.cast(a, tf.bool) for a in args]
@@ -43,6 +47,11 @@ class BooleanLogic():
 
 
 class LukasiewiczLogic():
+
+    @staticmethod
+    def cast(y):
+        return y
+
 
     @staticmethod
     def _not(args):
