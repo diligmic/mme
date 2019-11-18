@@ -145,6 +145,7 @@ def citeseer(test_size = 0.5):
     citations = np.greater(np.load("data/citeseer/citations.npy"), 0).astype(np.float32)
     citations = citations[:n, :n]
     num_documents = len(documents)
+    num_classes = 6
 
 
     def _inner_take_hb(idx):
@@ -161,7 +162,8 @@ def citeseer(test_size = 0.5):
 
 
     trid, teid = train_test_split(np.arange(num_documents), test_size=test_size, random_state=0)
-    trid, vaid = train_test_split(trid, test_size=0.2, random_state=0)
+    trid, vaid = train_test_split(trid, test_size=0.8, random_state=0)
+
 
     x_train, hb_train = _inner_take_hb(trid)
     x_valid, hb_valid = _inner_take_hb(vaid)
@@ -198,11 +200,14 @@ def citeseer_em(test_size):
     trid, teid = train_test_split(np.arange(num_documents), test_size=test_size, random_state=0)
     trid, vaid = train_test_split(trid, test_size=0.2, random_state=0)
 
+    mask_train_labels = np.zeros_like(labels)
+    mask_train_labels[trid] = 1
+
     x_train, hb_train = _inner_take_hb(trid)
     x_valid, hb_valid = _inner_take_hb(vaid)
     x_test, hb_test = _inner_take_hb(teid)
     x_all, hb_all = _inner_take_hb(np.arange(n))
 
-    return (x_train, hb_train), (x_valid, hb_valid), (x_test, hb_test), (x_all, hb_all)
+    return (x_train, hb_train), (x_valid, hb_valid), (x_test, hb_test), (x_all, hb_all), labels, mask_train_labels
 
 

@@ -24,6 +24,12 @@ def main(lr,seed,lambda_0,l2w, test_size, run_on_test=False):
     indices_train = np.reshape(np.arange(num_classes * num_examples),
                          [num_classes, num_examples]).T  # T because we made classes as unary potentials
 
+
+    #I set the seed after since i want the dataset to be always the same
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+
+
     m_e = np.zeros_like(hb_train)
     m_e[:, num_examples * num_classes:] = 1
 
@@ -204,7 +210,7 @@ if __name__ == "__main__":
     seed = 0
 
     res = []
-    for a  in product( [0.01], [0.25, 0.1,0.9, 0.75,0.5],[0.05]):
+    for a  in product( [0.01], [0.1],[0.05]):
     # for a  in product([0.01], [0.01], [0.75]):
         lr, test_size, lambda_0 = a
         acc_map, acc_nn = main(lr=lr, seed=seed, lambda_0 =lambda_0, l2w=0.001, test_size=test_size)
