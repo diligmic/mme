@@ -153,7 +153,7 @@ def main(lr,seed,perc_soft=0,l2w=0.1, w_rule=0.0001, test_size=0.5, run_on_test=
         for e in range(steps_map):
             map_inference_step(e)
             acc_map = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_to_test, axis=1), tf.argmax(y_bb, axis=1)), tf.float32))
-            print(acc_map)
+            print("Accuracy MAP:" + str(acc_map.numpy()))
             if mme.utils.heardEnter(): break
         acc_map = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_to_test, axis=1), tf.argmax(y_bb, axis=1)), tf.float32))
 
@@ -172,7 +172,7 @@ if __name__ == "__main__":
         w_rule, lr, test_size, lambda_0 = a
         acc_map, acc_nn = main(lr=lr, seed=seed, w_rule=w_rule, l2w=0.001, test_size=test_size)
         acc_map, acc_nn = acc_map.numpy(), acc_nn.numpy()
-        res.append("\t".join([str(a) for a in [w_rule, lr, acc_map, str(acc_nn)+"\n"]]))
+        res.append("\t".join([str(a) for a in [ w_rule, lr, test_size, lambda_0, acc_map, str(acc_nn)+"\n"]]))
         for i in res:
             print(i)
 
