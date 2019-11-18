@@ -16,7 +16,7 @@ def main(lr,seed,lambda_0,l2w, test_size):
 
 
 
-    (x_train, hb_train), (x_test, hb_test) = datasets.citeseer(test_size)
+    (x_train, hb_train), (x_valid,hb_valid), (x_test, hb_test) = datasets.citeseer(test_size)
     num_examples = len(x_train)
     num_examples_test = len(x_test)
     num_classes = 6
@@ -104,7 +104,7 @@ def main(lr,seed,lambda_0,l2w, test_size):
 
 
     """Inference: Since the test size is different, we need to define a new program"""
-    steps_map = 100
+    steps_map = 60
     hb = hb_test
     x = x_test
     num_examples = len(x_test)
@@ -193,7 +193,8 @@ if __name__ == "__main__":
     seed = 0
 
     res = []
-    for a  in product([0.1, 0.08, 0.05, 0.01], [0.01], [ 0.9, 0.75, 0.5, 0.25, 0.1]):
+    for a  in product([0.04], [0.01], [0.5, 0.25, 0.1, 0.9, 0.75]):
+    # for a  in product([0.01], [0.01], [0.75]):
         lambda_0, lr, test_size = a
         acc_map, acc_nn = main(lr=lr, seed=seed, lambda_0 =lambda_0, l2w=0.001, test_size=test_size)
         acc_map, acc_nn = acc_map.numpy(), acc_nn.numpy()

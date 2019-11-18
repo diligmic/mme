@@ -161,8 +161,13 @@ def citeseer(test_size = 0.5):
 
 
     trid, teid = train_test_split(np.arange(num_documents), test_size=test_size, random_state=0)
+    trid, vaid = train_test_split(trid, test_size=0.2, random_state=0)
 
-    return _inner_take_hb(trid), _inner_take_hb(teid)
+    x_train, hb_train = _inner_take_hb(trid)
+    x_valid, hb_valid = _inner_take_hb(vaid)
+    x_test,hb_test =  _inner_take_hb(teid)
+
+    return (x_train, hb_train), (x_valid,hb_valid), (x_test, hb_test)
 
 
 
