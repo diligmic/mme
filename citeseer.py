@@ -197,7 +197,7 @@ if __name__ == "__main__":
         lambda_0, lr, test_size = a
         acc_map, acc_nn = main(lr=lr, seed=seed, lambda_0 =lambda_0, l2w=0.001, test_size=test_size)
         acc_map, acc_nn = acc_map.numpy(), acc_nn.numpy()
-        res.append("\t".join([str(a) for a in [lambda_0, lr, test_size, acc_map, str(acc_nn)+"\n"]]))
+        res.append("\t".join([str(a) for a in [lambda_0, lr, test_size, str(acc_nn), acc_map+"\n"]]))
         for i in res:
             print(i)
 
