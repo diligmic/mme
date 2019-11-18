@@ -17,28 +17,29 @@ def main(lr,seed,lambda_0,l2w, test_size, run_on_test=False):
 
 
 
-    (x_train, hb_train), (x_valid, hb_valid), (x_test, hb_test), (x_all, hb_all), mask_train_labels, labels = datasets.citeseer_em(test_size)
+    (x_train, hb_train), (x_valid, hb_valid), (x_test, hb_test), (x_all, hb_all), mask_train_labels, labels, trid, vaid, teid = datasets.citeseer_em(test_size)
     num_examples = len(x_all)
     num_classes = 6
 
-    indices_train = np.reshape(np.arange(num_classes * len(x_train)),
-                         [num_classes, len(x_train)]).T  # T because we made classes as unary potentials
+    indices = np.reshape(np.arange(num_classes * len(x_all)),
+                         [num_classes, len(x_all)]).T  # T because we made classes as unary potentials
 
+    indices_train = indices[trid]
     if run_on_test:
         x_to_test = x_test
         hb_to_test = hb_test
         num_examples_to_test = len(x_test)
-        indices_to_test = np.reshape(np.arange(num_classes * num_examples_to_test),
-                             [num_classes, num_examples_to_test]).T  # T because we made classes as unary potentials
+        indices_to_test = indices[teid]
 
     else:
         x_to_test = x_valid
         hb_to_test = hb_valid
         num_examples_to_test = len(x_valid)
-        indices_to_test = np.reshape(np.arange(num_classes * num_examples_to_test),
-                             [num_classes, num_examples_to_test]).T  # T because we made classes as unary potentials
+        indices_valid = np.reshape(np.arange(num_classes * len(x_valid)),
+                             [num_classes, len(x_valid)]).T  # T because we made classes as unary potentials
+        indices_to_test = indices[vaid]
 
-
+    y_to_test = tf.gather(hb_all[0], indices_to_test)
 
     """Logic Program Definition"""
     o = mme.Ontology()
@@ -76,7 +77,9 @@ def main(lr,seed,lambda_0,l2w, test_size, run_on_test=False):
     potentials.append(p2)
 
     # Logical
-    evidence_mask = hb_all * np.ones_like(hb_all[:, num_examples*num_classes:])
+    np.ones_like(hb_all)
+    evidence_mask = np.zeros_like(hb_all)
+    evidence_mask[:, num_examples * num_classes:]=1
     for name in preds:
         c = mme.Formula(definition="%s(x) and cite(x,y) -> %s(y)" % (name, name), ontology=o)
         p3 = mme.potentials.EvidenceLogicPotential(formula=c, logic=mme.logic.BooleanLogic, evidence=hb_all,
@@ -90,7 +93,7 @@ def main(lr,seed,lambda_0,l2w, test_size, run_on_test=False):
 
     def pretrain_step():
         """pretrain rete"""
-        y_train = tf.gather(hb_train[0], indices_train)
+        y_train = tf.gather(hb_all[0], indices_train)
 
         adam = tf.keras.optimizers.Adam(lr=0.001)
 
@@ -106,12 +109,19 @@ def main(lr,seed,lambda_0,l2w, test_size, run_on_test=False):
             grad_vars = zip(grads, nn.variables)
             adam.apply_gradients(grad_vars)
 
-        epochs_pretrain = 150
+        epochs_pretrain = 10
         for e in range(epochs_pretrain):
             training_step()
+            y_nn = nn(x_to_test)
+            acc_nn = tf.reduce_mean(
+                tf.cast(tf.equal(tf.argmax(y_to_test, axis=1), tf.argmax(y_nn, axis=1)), tf.float32))
+            print(acc_nn)
 
         y_new = tf.gather(tf.eye(num_classes), tf.argmax(nn(x_all), axis=1), axis=0)
+
         new_labels = tf.where(mask_train_labels > 0, labels, y_new)
+        print(tf.reduce_all(tf.reduce_sum(new_labels, axis=1) == 1))
+        exit()
         new_hb = tf.concat(
             (tf.reshape(tf.transpose(new_labels, [1, 0]), [1, -1]), hb_all[:, num_examples * num_classes:]),axis=1)
 
@@ -122,7 +132,6 @@ def main(lr,seed,lambda_0,l2w, test_size, run_on_test=False):
 
         hb = new_hb
         pwt = mme.PieceWiseTraining(global_potential=P, y=hb)
-        y_to_test = tf.gather(hb_to_test[0], indices_to_test)
 
         """BETA TRAINING"""
         pwt.compute_beta_logical_potentials()
@@ -131,6 +140,7 @@ def main(lr,seed,lambda_0,l2w, test_size, run_on_test=False):
 
         """NN TRAINING"""
         epochs = 300
+
         for _ in range(epochs):
             pwt.maximize_likelihood_step(new_hb, x=x_all)
             y_nn = nn(x_to_test)
@@ -160,15 +170,13 @@ def main(lr,seed,lambda_0,l2w, test_size, run_on_test=False):
         for i in range(steps_map):
             P.potentials[1].beta = max_beta - max_beta * (steps_map - i) / steps_map
             map_inference.infer_step(x_all)
-            y_map = tf.gather(map_inference.map()[0], indices)
+            y_map = tf.gather(map_inference.map()[0], indices_to_test)
             acc_map = tf.reduce_mean(
-                tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_map, axis=1)), tf.float32))
+                tf.cast(tf.equal(tf.argmax(y_to_test, axis=1), tf.argmax(y_map, axis=1)), tf.float32))
             print("Accuracy MAP", acc_map.numpy())
             if mme.utils.heardEnter():
                 break
 
-        y_nn = p1.model(x)
-        acc_nn = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_nn, axis=1)), tf.float32))
 
         return [acc_map, acc_nn]
 

@@ -208,6 +208,6 @@ def citeseer_em(test_size):
     x_test, hb_test = _inner_take_hb(teid)
     x_all, hb_all = _inner_take_hb(np.arange(n))
 
-    return (x_train, hb_train), (x_valid, hb_valid), (x_test, hb_test), (x_all, hb_all), labels, mask_train_labels
+    return (x_train, hb_train), (x_valid, hb_valid), (x_test, hb_test), (x_all, hb_all), labels, mask_train_labels, trid, vaid, teid
 
 

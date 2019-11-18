@@ -125,7 +125,6 @@ def main(lr,seed,perc_soft=0,l2w=0.1, w_rule=0.0001, test_size=0.5, run_on_test=
         y_bb = tf.Variable(initial_value=0.5 * tf.ones_like(prior))
         max_beta_me = 2
 
-        lambda_0 = 0.05
 
         def make_hb_with_model(neural_softmax, hb_all):
             new_hb = tf.concat(
@@ -170,7 +169,7 @@ if __name__ == "__main__":
     for a  in product([1], [0.01], [0.25, 0.1,0.9, 0.75,0.5],[0.05]):
     # for a  in product([0.1, 1,10,100], [0.01], [0.1,0.25,0.5, 0.75, 0.9],[0.05]):
         w_rule, lr, test_size, lambda_0 = a
-        acc_map, acc_nn = main(lr=lr, seed=seed, w_rule=w_rule, l2w=0.001, test_size=test_size)
+        acc_map, acc_nn = main(lr=lr, seed=seed, w_rule=w_rule, l2w=0.001, test_size=test_size, lambda_0=lambda_0)
         acc_map, acc_nn = acc_map.numpy(), acc_nn.numpy()
         res.append("\t".join([str(a) for a in [ w_rule, lr, test_size, lambda_0, acc_map, str(acc_nn)+"\n"]]))
         for i in res:
