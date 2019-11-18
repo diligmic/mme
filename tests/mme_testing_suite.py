@@ -660,6 +660,6 @@ class Test(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    mode = "DEVELOPMENT"
-    # mode = "TEST"
+    # mode = "DEVELOPMENT"
+    mode = "TEST"
     unittest.main()

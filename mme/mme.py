@@ -148,8 +148,8 @@ class PieceWiseTraining():
             if isinstance(p, CountableGroundingPotential):
 
                 ntrue = p(y=None)
-                nfalse = (2**p.cardinality)*p.num_groundings - ntrue
-                # nfalse = (2**p.cardinality) - ntrue
+                # nfalse = (2**p.cardinality)*p.num_groundings - ntrue
+                nfalse = (2**p.cardinality) - ntrue
 
                 g,x = p.ground(y=y, x=x)
                 phi_on_groundings = p.call_on_groundings(g,x)
@@ -157,7 +157,7 @@ class PieceWiseTraining():
                 # avg_data = tf.abs(avg_data -  1e-7)
                 p.beta = tf.math.log(ntrue/nfalse) + tf.math.log(avg_data/(1 - avg_data))
                 if p.beta == np.inf:
-                    p.beta = tf.Variable(5.)
+                    p.beta = tf.Variable(100.)
 
 
     def maximize_likelihood_step(self, y, x=None):
@@ -177,7 +177,7 @@ class PieceWiseTraining():
 
                     y = p._reshape_y(y)
                     o = p.model(x)
-                    xent = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits = o, labels=y))
+                    xent = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits = o, labels=y))
                     xent += tf.reduce_sum(p.model.losses)
 
 

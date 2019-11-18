@@ -48,7 +48,7 @@ def main(lr,seed,perc_soft,l2w):
                          [images.num_constants, numbers.num_constants])
     nn = tf.keras.Sequential()
     nn.add(tf.keras.layers.Input(shape=(784,)))
-    nn.add(tf.keras.layers.Dense(100, activation=tf.nn.sigmoid, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(100, activation=tf.nn.sigmoid))  # up to the last hidden layer
     nn.add(tf.keras.layers.Dense(10,use_bias=False))
     p1 = mme.potentials.SupervisionLogicalPotential(nn, indices)
 
@@ -72,8 +72,13 @@ def main(lr,seed,perc_soft,l2w):
 
 
     epochs = 150
+    y_test = tf.reshape(hb_test[0, :num_examples * 10], [num_examples, 10])
     for _ in range(epochs):
         pwt.maximize_likelihood_step(hb_train, x=x_train)
+        y_nn = p1.model(x_test)
+        acc_nn = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_nn, axis=1)), tf.float32))
+        print(acc_nn)
+
 
     """Inference"""
     steps_map = 500
@@ -82,8 +87,7 @@ def main(lr,seed,perc_soft,l2w):
     evidence = y_e_test
     evidence_mask = m_e>0
 
-    P.potentials[0].beta = 0.002
-
+    P.potentials[0].beta = 0.01
     map_inference = mme.inference.FuzzyMAPInference(y_shape=hb.shape,
                                                     potential=P,
                                                     logic=mme.logic.LukasiewiczLogic,
@@ -98,7 +102,7 @@ def main(lr,seed,perc_soft,l2w):
             y_map = tf.reshape(map_inference.map()[0, :num_examples * 10], [num_examples, 10])
             acc_map = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_map, axis=1)), tf.float32))
             print("Accuracy MAP", acc_map.numpy())
-
+            print(y_map[:3])
         if mme.utils.heardEnter():
             break
 
@@ -116,7 +120,7 @@ if __name__ == "__main__":
     seed = 0
 
     res = []
-    for a  in product([0, 0.05, 0.08, 0.1, 0.2, 0.3, 0.5, 0.8, 1], [0.01]):
+    for a  in product([0, 0.05, 0.08, 0.1, 0.2, 0.3, 0.5, 0.8, 1], [0.1]):
         perc, lr = a
         acc_map, acc_nn = main(lr=lr, seed=seed, perc_soft=perc, l2w=0.01)
         acc_map, acc_nn = acc_map.numpy(), acc_nn.numpy()

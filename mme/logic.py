@@ -88,6 +88,10 @@ class LukasiewiczLogic():
 class ProductLogic():
 
     @staticmethod
+    def cast(y):
+        return y
+
+    @staticmethod
     def _not(args):
         assert len(args)==1, "N-Ary negation not defined"
         return 1 - args[0]

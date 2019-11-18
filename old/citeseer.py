@@ -12,13 +12,12 @@ base_savings = os.path.join("savings", "citeseer")
 pretrain_path = os.path.join(base_savings,"pretrain")
 posttrain_path = os.path.join(base_savings,"posttrain")
 
-def main(lr,seed,lambda_0,l2w, test_size):
+def main(lr,seed,lambda_0,l2w):
 
 
 
-    (x_train, hb_train), (x_test, hb_test) = datasets.citeseer(test_size)
+    (x_train, hb_train), (x_test, hb_test) = datasets.citeseer()
     num_examples = len(x_train)
-    num_examples_test = len(x_test)
     num_classes = 6
 
 
@@ -30,6 +29,7 @@ def main(lr,seed,lambda_0,l2w, test_size):
     m_e[:, num_examples*num_classes:] = 1
 
     y_e_train = hb_train * m_e
+    y_e_test = hb_test * m_e
 
 
 
@@ -55,13 +55,9 @@ def main(lr,seed,lambda_0,l2w, test_size):
     #Supervision
     indices = np.reshape(np.arange(num_classes * docs.num_constants),
                          [num_classes, docs.num_constants]).T # T because we made classes as unary potentials
-
-    indices_test = np.reshape(np.arange(num_classes * num_examples_test),
-                         [num_classes, num_examples_test]).T  # T because we made classes as unary potentials
-
     nn = tf.keras.Sequential()
     nn.add(tf.keras.layers.Input(shape=(x_train.shape[1],)))
-    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.sigmoid, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.sigmoid))  # up to the last hidden layer
     nn.add(tf.keras.layers.Dense(num_classes,use_bias=False))
     p1 = mme.potentials.SupervisionLogicalPotential(nn, indices)
     potentials.append(p1)
@@ -81,7 +77,7 @@ def main(lr,seed,lambda_0,l2w, test_size):
     P = mme.potentials.GlobalPotential(potentials)
     pwt = mme.PieceWiseTraining(global_potential=P, y=hb_train)
 
-    y_test = tf.gather(hb_test[0], indices_test)
+    y_test = tf.gather(hb_test[0], indices)
 
     # tf.saved_model.save(P, os.path.join("savings","citeseer_pretrain"))
     # P = tf.saved_model.load(os.path.join("savings","citeseer_pretrain"))
@@ -94,7 +90,7 @@ def main(lr,seed,lambda_0,l2w, test_size):
 
 
     """NN TRAINING"""
-    epochs = 300
+    epochs = 150
     for _ in range(epochs):
         pwt.maximize_likelihood_step(hb_train, x=x_train)
         y_nn = nn(x_test)
@@ -103,67 +99,24 @@ def main(lr,seed,lambda_0,l2w, test_size):
 
 
 
-    """Inference: Since the test size is different, we need to define a new program"""
-    steps_map = 100
+    #Test accuracy after supervised step
+    y_nn = nn(x_test)
+    acc_nn = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_nn, axis=1)), tf.float32))
+
+
+
+    """Inference"""
+    steps_map = 150
     hb = hb_test
     x = x_test
-    num_examples = len(x_test)
-    m_e = np.zeros_like(hb_test)
-    m_e[:, num_examples_test*num_classes:] = 1
-    y_e_test = hb_test * m_e
-
-    num_classes = 6
-
-
     evidence = y_e_test
-    evidence_mask = m_e > 0
-
-    # Domains
-    o = mme.Ontology()
-    docs = mme.Domain("Documents", data=x_test)
-    o.add_domain([docs])
-
-    # Predicates
-
-    preds = ["ag", "ai", "db", "ir", "ml", "hci"]
-    for name in preds:
-        p = mme.Predicate(name, domains=[docs])
-        o.add_predicate(p)
-
-    cite = mme.Predicate("cite", domains=[docs, docs], given=True)
-    o.add_predicate(cite)
-
-    """MME definition"""
-    potentials = []
-    # Supervision
-    indices = np.reshape(np.arange(num_classes * docs.num_constants),
-                         [num_classes, docs.num_constants]).T
-    p1 = mme.potentials.SupervisionLogicalPotential(nn, indices)
-    potentials.append(p1)
-
-    # Mutual Exclusivity (needed for inference , since SupervisionLogicalPotential already subsumes it during training)
-    p2 = mme.potentials.MutualExclusivityPotential(indices=indices)
-    potentials.append(p2)
-
-    # Logical
-    logical_preds = []
-    for name in preds:
-        c = mme.Formula(definition="%s(x) and cite(x,y) -> %s(y)" % (name, name), ontology=o)
-        p3 = mme.potentials.LogicPotential(formula=c, logic=mme.logic.BooleanLogic)
-        potentials.append(p3)
+    evidence_mask = m_e>0
 
 
-
-    # We use the trained weights
-    P_test = mme.potentials.GlobalPotential(potentials)
-    for i,p in enumerate(P.potentials):
-        P_test.potentials[i].beta = p.beta
-
-
-
+    initial_nn = tf.concat((tf.reshape(tf.transpose(tf.nn.softmax(nn(x_test)),[1,0]), [1, -1]), hb_test[:,num_examples*num_classes:]), axis=1)
 
     map_inference = mme.inference.FuzzyMAPInference(y_shape=hb.shape,
-                                                    potential=P_test,
+                                                    potential=P,
                                                     logic=mme.logic.LukasiewiczLogic,
                                                     evidence=evidence,
                                                     evidence_mask=evidence_mask,
@@ -172,9 +125,9 @@ def main(lr,seed,lambda_0,l2w, test_size):
 
     y_test = tf.gather(hb[0], indices)
     max_beta = 2
-    P_test.potentials[0].beta = lambda_0
+    P.potentials[0].beta = lambda_0
     for i in range(steps_map):
-        P_test.potentials[1].beta = max_beta - max_beta * (steps_map - i) / steps_map
+        P.potentials[1].beta = max_beta - max_beta * (steps_map - i) / steps_map
         map_inference.infer_step(x)
         y_map = tf.gather(map_inference.map()[0], indices)
         acc_map = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_map, axis=1)), tf.float32))
@@ -193,11 +146,11 @@ if __name__ == "__main__":
     seed = 0
 
     res = []
-    for a  in product([0.1, 0.08, 0.05, 0.01], [0.01], [ 0.9, 0.75, 0.5, 0.25, 0.1]):
-        lambda_0, lr, test_size = a
-        acc_map, acc_nn = main(lr=lr, seed=seed, lambda_0 =lambda_0, l2w=0.001, test_size=test_size)
+    for a  in product([0.001, 0.01, 0.03, 0.05, 0.08, 0.1, 0.3], [0.01]):
+        lambda_0, lr = a
+        acc_map, acc_nn = main(lr=lr, seed=seed, lambda_0 =lambda_0, l2w=0.1)
         acc_map, acc_nn = acc_map.numpy(), acc_nn.numpy()
-        res.append("\t".join([str(a) for a in [lambda_0, lr, test_size, acc_map, str(acc_nn)+"\n"]]))
+        res.append("\t".join([str(a) for a in [lambda_0, lr, acc_map, str(acc_nn)+"\n"]]))
         for i in res:
             print(i)
 

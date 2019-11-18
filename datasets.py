@@ -135,11 +135,15 @@ def mnist_follows(num_examples, seed = 0, perc_soft=0.1):
 
 
 
-def citeseer():
+def citeseer(test_size = 0.5):
     documents = np.load("data/citeseer/words.npy")
+    n = len(documents)
+    documents = documents[:n]
     labels = np.load("data/citeseer/labels.npy")
+    labels = labels[:n]
     labels = np.eye(6)[labels]
-    citations = np.load("data/citeseer/citations.npy")
+    citations = np.greater(np.load("data/citeseer/citations.npy"), 0).astype(np.float32)
+    citations = citations[:n, :n]
     num_documents = len(documents)
 
 
@@ -150,12 +154,13 @@ def citeseer():
         c = np.reshape(citations[idx][:,idx], [1, -1])
 
         hb = np.concatenate((l,c), axis=1)
+        hb = hb.astype(np.float32)
 
         return x, hb
 
 
 
-    trid, teid = train_test_split(np.arange(num_documents), test_size=num_documents//2, random_state=0)
+    trid, teid = train_test_split(np.arange(num_documents), test_size=test_size, random_state=0)
 
     return _inner_take_hb(trid), _inner_take_hb(teid)
 
@@ -163,10 +168,15 @@ def citeseer():
 
 
 def citeseer_em():
+
     documents = np.load("data/citeseer/words.npy")
+    n = len(documents)
+    documents = documents[:n]
     labels = np.load("data/citeseer/labels.npy")
+    labels = labels[:n]
     labels = np.eye(6)[labels]
-    citations = np.load("data/citeseer/citations.npy")
+    citations = np.greater(np.load("data/citeseer/citations.npy"),0).astype(np.float32)
+    citations= citations[:n,:n]
     num_documents = len(documents)
 
     trid, teid = train_test_split(np.arange(num_documents), test_size=num_documents//2, random_state=0)
@@ -175,21 +185,12 @@ def citeseer_em():
 
     l = np.reshape(labels.T, [1, -1])
     c = np.reshape(citations, [1, -1])
+
     me_per_inference = np.reshape(mask_on_labels.T, [1, -1])
-
     me_per_inference = np.concatenate((me_per_inference, np.ones([1, num_documents**2])), axis=1)
+
     me_per_training = np.concatenate((np.zeros([1, num_documents*6]), np.ones([1, num_documents**2])), axis=1)
-    hb_all = np.concatenate((l,c), axis=1)
-
-
+    hb_all = np.concatenate((l,c), axis=1).astype(np.float32)
 
     return documents, trid, teid, hb_all, me_per_inference, me_per_training, labels, mask_on_labels
 
-
-
-
-
-
-
-
-    

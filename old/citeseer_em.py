@@ -4,7 +4,7 @@ import datasets
 import numpy as np
 import os
 from itertools import product
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 tf.get_logger().setLevel('ERROR')
 
@@ -27,8 +27,7 @@ def main(lr,seed,perc_soft,l2w):
 
     nn = tf.keras.Sequential()
     nn.add(tf.keras.layers.Input(shape=(documents.shape[1],)))
-    nn.add(tf.keras.layers.Dense(100, activation=tf.nn.sigmoid,
-                                 kernel_regularizer=tf.keras.regularizers.l2(l2w)))
+    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.sigmoid))
     nn.add(tf.keras.layers.Dense(num_classes, use_bias=False, activation=None))
 
     def pretrain():
@@ -115,7 +114,7 @@ def main(lr,seed,perc_soft,l2w):
             print(p, p.beta)
 
         """NN TRAINING"""
-        epochs = 10
+        epochs = 50
         for _ in range(epochs):
             pwt.maximize_likelihood_step(hb, x=documents)
             y_nn = tf.nn.softmax(nn(documents))
@@ -133,15 +132,19 @@ def main(lr,seed,perc_soft,l2w):
                                                         logic=mme.logic.LukasiewiczLogic,
                                                         evidence=evidence,
                                                         evidence_mask=me_per_inference,
-                                                        learning_rate= lr,
-                                                        initial_value=evidence) #tf.keras.optimizers.schedules.ExponentialDecay(lr, decay_steps=steps_map, decay_rate=0.96, staircase=True))
+                                                        learning_rate= lr)
+                                                        # initial_value=evidence) #tf.keras.optimizers.schedules.ExponentialDecay(lr, decay_steps=steps_map, decay_rate=0.96, staircase=True))
 
-        steps_map = 20
+        steps_map = 100
+        print(tf.gather(map_inference.map()[0], indices)[:10])
+        input()
+
         for i in range(steps_map):
             map_inference.infer_step(documents)
             y_map = tf.gather(map_inference.map()[0], indices)
             acc_map = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(tf.gather(labels, teid), axis=1), tf.argmax(tf.gather(y_map, teid), axis=1)), tf.float32))
             print("Accuracy MAP", acc_map.numpy())
+            print(y_map[:10])
 
             if mme.utils.heardEnter():
                 break
@@ -162,7 +165,7 @@ if __name__ == "__main__":
     seed = 0
 
     res = []
-    for a  in product([0], [0.01]):
+    for a  in product([0], [0.06]):
         perc, lr = a
         acc_map, acc_nn = main(lr=lr, seed=seed, perc_soft=perc, l2w=0.1)
         acc_map, acc_nn = acc_map.numpy(), acc_nn.numpy()
@@ -170,9 +173,10 @@ if __name__ == "__main__":
         for i in res:
             print(i)
 
-    with open("res_dlm_%d"%seed, "w") as file:
+    with open("res_dlm_citeceer_em"%seed, "w") as file:
         file.write("perc, lr, acc_map, acc_nn\n")
         file.writelines(res)
+
 
 
 

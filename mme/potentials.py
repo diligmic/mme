@@ -30,7 +30,7 @@ class CountableGroundingPotential(Potential):
         pass
 
     def reduce_groundings(self, y):
-        return tf.reduce_sum(y, axis=-1)
+        return tf.reduce_mean(y, axis=-1)
 
     def __call__(self, y, x=None):
         g,x_g = self.ground(y,x)
@@ -155,12 +155,10 @@ class SupervisionLogicalPotential(Potential):
 
     def __call__(self, y, x=None):
         y = tf.cast(y, tf.float32) # num_examples x num_variables
-        n = len(y.shape)
         y = self._reshape_y(y) # num_examples x num_groundings x num_variable_in_grounding
         o = self.model(x)
-        o =  tf.reshape(o, [y.shape[0], x.shape[0], -1])
-        ax = tf.range(len(y.shape))[-(n-1):]
-        t = tf.reduce_sum(o*y, axis=ax)
+        o =  tf.reshape(o, [y.shape[0], x.shape[-2], -1])
+        t = tf.reduce_mean(o*y, axis=tf.range(len(y.shape))[1:])
         return t
 
 
