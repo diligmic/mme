@@ -135,7 +135,7 @@ def mnist_follows(num_examples, seed = 0, perc_soft=0.1):
 
 
 
-def citeseer(test_size = 0.5):
+def citeseer(test_size = 0.5, valid_size=0.):
     documents = np.load("data/citeseer/words.npy")
     n = len(documents)
     documents = documents[:n]
@@ -162,11 +162,11 @@ def citeseer(test_size = 0.5):
 
 
     trid, teid = train_test_split(np.arange(num_documents), test_size=test_size, random_state=0)
-    trid, vaid = train_test_split(trid, test_size=0.8, random_state=0)
+    trid, vaid = train_test_split(trid, test_size=valid_size, random_state=0) if valid_size>0 else trid, None
 
 
     x_train, hb_train = _inner_take_hb(trid)
-    x_valid, hb_valid = _inner_take_hb(vaid)
+    x_valid, hb_valid = _inner_take_hb(vaid) if valid_size>0 else (None, None)
     x_test,hb_test =  _inner_take_hb(teid)
 
     return (x_train, hb_train), (x_valid,hb_valid), (x_test, hb_test)

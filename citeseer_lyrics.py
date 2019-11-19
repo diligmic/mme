@@ -4,7 +4,8 @@ import datasets
 import numpy as np
 import os
 from itertools import product
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 tf.get_logger().setLevel('ERROR')
 
@@ -12,11 +13,11 @@ base_savings = os.path.join("savings", "citeseer")
 pretrain_path = os.path.join(base_savings,"pretrain")
 posttrain_path = os.path.join(base_savings,"posttrain")
 
-def main(lr,seed,perc_soft=0,l2w=0.1, w_rule=0.0001, test_size=0.5, run_on_test=False, lambda_0=0.05):
+def main(lr,seed,perc_soft=0,l2w=0.1, w_rule=0.0001, test_size=0.5, run_on_test=False, lambda_0=0.05, valid_size = 0.):
 
 
 
-    (x_train, hb_train), (x_valid,hb_valid), (x_test, hb_test) = datasets.citeseer(test_size)
+    (x_train, hb_train), (x_valid,hb_valid), (x_test, hb_test) = datasets.citeseer(test_size, valid_size)
     num_examples = len(x_train)
     num_classes = 6
 
@@ -48,7 +49,9 @@ def main(lr,seed,perc_soft=0,l2w=0.1, w_rule=0.0001, test_size=0.5, run_on_test=
 
     nn = tf.keras.Sequential()
     nn.add(tf.keras.layers.Input(shape=(x_train.shape[1],)))
-    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.sigmoid, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
     nn.add(tf.keras.layers.Dense(num_classes, use_bias=False))
 
     adam = tf.keras.optimizers.Adam(lr=0.001)
@@ -69,12 +72,13 @@ def main(lr,seed,perc_soft=0,l2w=0.1, w_rule=0.0001, test_size=0.5, run_on_test=
 
 
 
-    epochs = 300
+    epochs = 200
     y_to_test = tf.gather(hb_to_test[0], indices_to_test)
     for e in range(epochs):
         training_step()
         y_nn = nn(x_to_test)
         acc_nn = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_to_test, axis=1), tf.argmax(y_nn, axis=1)), tf.float32))
+        # if e%50==0:
         print(acc_nn)
 
 
@@ -152,6 +156,7 @@ def main(lr,seed,perc_soft=0,l2w=0.1, w_rule=0.0001, test_size=0.5, run_on_test=
         for e in range(steps_map):
             map_inference_step(e)
             acc_map = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_to_test, axis=1), tf.argmax(y_bb, axis=1)), tf.float32))
+            # if e%30==0:
             print("Accuracy MAP:" + str(acc_map.numpy()))
             if mme.utils.heardEnter(): break
         acc_map = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_to_test, axis=1), tf.argmax(y_bb, axis=1)), tf.float32))
@@ -166,10 +171,11 @@ if __name__ == "__main__":
     seed = 0
 
     res = []
-    for a  in product([1], [0.01], [0.25, 0.1,0.9, 0.75,0.5],[0.05]):
-    # for a  in product([0.1, 1,10,100], [0.01], [0.1,0.25,0.5, 0.75, 0.9],[0.05]):
+    for a  in product([1], [0.01], [0.1, 0.25, 0.5, 0.75, 0.9],[0.001, 0.005, 0.01, 0.05, 0.1, 0.5]):
+    # for a  in product([1], [0.01], [0.5],[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]):
+    # for a  in product([1], [0.01], [0.1],[0.05]):
         w_rule, lr, test_size, lambda_0 = a
-        acc_map, acc_nn = main(lr=lr, seed=seed, w_rule=w_rule, l2w=0.001, test_size=test_size, lambda_0=lambda_0)
+        acc_map, acc_nn = main(lr=lr, seed=seed, w_rule=w_rule, l2w=0.006, test_size=test_size, valid_size=0., lambda_0=lambda_0)
         acc_map, acc_nn = acc_map.numpy(), acc_nn.numpy()
         res.append("\t".join([str(a) for a in [ w_rule, lr, test_size, lambda_0, acc_map, str(acc_nn)+"\n"]]))
         for i in res:

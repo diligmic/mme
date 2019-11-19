@@ -4,7 +4,7 @@ import datasets
 import numpy as np
 import os
 from itertools import product
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 tf.get_logger().setLevel('ERROR')
 
@@ -12,12 +12,12 @@ base_savings = os.path.join("savings", "citeseer")
 pretrain_path = os.path.join(base_savings,"pretrain")
 posttrain_path = os.path.join(base_savings,"posttrain")
 
-def main(lr,seed,lambda_0,l2w, test_size, run_on_test=False):
+def main(lr,seed,lambda_0,l2w, test_size, valid_size=0., run_on_test=False):
 
 
 
 
-    (x_train, hb_train), (x_valid,hb_valid), (x_test, hb_test) = datasets.citeseer(test_size)
+    (x_train, hb_train), (x_valid,hb_valid), (x_test, hb_test) = datasets.citeseer(test_size, valid_size)
     num_examples = len(x_train)
     num_classes = 6
 
@@ -74,7 +74,9 @@ def main(lr,seed,lambda_0,l2w, test_size, run_on_test=False):
 
     nn = tf.keras.Sequential()
     nn.add(tf.keras.layers.Input(shape=(x_train.shape[1],)))
-    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.sigmoid, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
     nn.add(tf.keras.layers.Dense(num_classes,use_bias=False))
     p1 = mme.potentials.SupervisionLogicalPotential(nn, indices)
     potentials.append(p1)
@@ -106,13 +108,13 @@ def main(lr,seed,lambda_0,l2w, test_size, run_on_test=False):
 
 
     """NN TRAINING"""
-    epochs = 300
+    epochs = 200
     for _ in range(epochs):
         pwt.maximize_likelihood_step(hb_train, x=x_train)
         y_nn = nn(x_to_test)
         acc_nn = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_to_test, axis=1), tf.argmax(y_nn, axis=1)), tf.float32))
-        print(acc_nn)
-
+        if _%50==0:
+            print(acc_nn)
 
 
     """Inference: Since the test size is different, we need to define a new program"""
@@ -193,9 +195,10 @@ def main(lr,seed,lambda_0,l2w, test_size, run_on_test=False):
             map_inference.infer_step(x)
             y_map = tf.gather(map_inference.map()[0], indices)
             acc_map = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_map, axis=1)), tf.float32))
-            print("Accuracy MAP", acc_map.numpy())
-            if mme.utils.heardEnter():
-                break
+            if i%30==0:
+                print("Accuracy MAP", acc_map.numpy())
+                if mme.utils.heardEnter():
+                    break
 
         y_nn = p1.model(x)
         acc_nn = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_nn, axis=1)), tf.float32))
@@ -210,10 +213,12 @@ if __name__ == "__main__":
     seed = 0
 
     res = []
-    for a  in product( [0.01], [0.1],[0.05]):
-    # for a  in product([0.01], [0.01], [0.75]):
+    for a  in product( [0.01], [0.1, 0.25, 0.5, 0.75, 0.9],[0.05, 0.1, 0.5]):
+    # for a  in product([0.01], [0.75], [0.01, 0.05, 0.1]):
+    # for a  in product([0.01], [0.75], [0.1, 0.5, 1]):
         lr, test_size, lambda_0 = a
-        acc_map, acc_nn = main(lr=lr, seed=seed, lambda_0 =lambda_0, l2w=0.001, test_size=test_size)
+        # acc_map, acc_nn = main(lr=lr, seed=seed, lambda_0 =lambda_0, l2w=0.006, test_size=test_size, run_on_test=False)
+        acc_map, acc_nn = main(lr=lr, seed=seed, lambda_0 =lambda_0, l2w=0.006, test_size=test_size, valid_size=0., run_on_test=True)
         acc_map, acc_nn = acc_map.numpy(), acc_nn.numpy()
         res.append("\t".join([str(a) for a in  [lr, test_size, lambda_0, str(acc_nn), str(acc_map)+"\n"]]))
         for i in res:
@@ -222,8 +227,3 @@ if __name__ == "__main__":
     with open("res_dlm_lambda_0_%d"%seed, "w") as file:
         file.write("perc, lr, acc_map, acc_nn\n")
         file.writelines(res)
-
-
-
-
-
