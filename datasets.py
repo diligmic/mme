@@ -145,6 +145,7 @@ def citeseer(test_size = 0.5):
     citations = np.greater(np.load("data/citeseer/citations.npy"), 0).astype(np.float32)
     citations = citations[:n, :n]
     num_documents = len(documents)
+    num_classes = 6
 
 
     def _inner_take_hb(idx):
@@ -161,13 +162,20 @@ def citeseer(test_size = 0.5):
 
 
     trid, teid = train_test_split(np.arange(num_documents), test_size=test_size, random_state=0)
-
-    return _inner_take_hb(trid), _inner_take_hb(teid)
-
+    trid, vaid = train_test_split(trid, test_size=0.8, random_state=0)
 
 
+    x_train, hb_train = _inner_take_hb(trid)
+    x_valid, hb_valid = _inner_take_hb(vaid)
+    x_test,hb_test =  _inner_take_hb(teid)
 
-def citeseer_em():
+    return (x_train, hb_train), (x_valid,hb_valid), (x_test, hb_test)
+
+
+
+
+def citeseer_em(test_size, valid_size):
+
 
     documents = np.load("data/citeseer/words.npy")
     n = len(documents)
@@ -175,22 +183,32 @@ def citeseer_em():
     labels = np.load("data/citeseer/labels.npy")
     labels = labels[:n]
     labels = np.eye(6)[labels]
-    citations = np.greater(np.load("data/citeseer/citations.npy"),0).astype(np.float32)
-    citations= citations[:n,:n]
+    citations = np.greater(np.load("data/citeseer/citations.npy"), 0).astype(np.float32)
+    citations = citations[:n, :n]
     num_documents = len(documents)
 
-    trid, teid = train_test_split(np.arange(num_documents), test_size=num_documents//2, random_state=0)
-    mask_on_labels = np.zeros_like(labels)
-    mask_on_labels[trid] = 1
+    def _inner_take_hb(idx):
+        x = documents[idx]
+        l = np.reshape(labels[idx].T, [1, -1])
+        c = np.reshape(citations[idx][:, idx], [1, -1])
 
-    l = np.reshape(labels.T, [1, -1])
-    c = np.reshape(citations, [1, -1])
+        hb = np.concatenate((l, c), axis=1)
+        hb = hb.astype(np.float32)
 
-    me_per_inference = np.reshape(mask_on_labels.T, [1, -1])
-    me_per_inference = np.concatenate((me_per_inference, np.ones([1, num_documents**2])), axis=1)
+        return x, hb
 
-    me_per_training = np.concatenate((np.zeros([1, num_documents*6]), np.ones([1, num_documents**2])), axis=1)
-    hb_all = np.concatenate((l,c), axis=1).astype(np.float32)
+    trid, teid = train_test_split(np.arange(num_documents), test_size=test_size, random_state=0)
 
-    return documents, trid, teid, hb_all, me_per_inference, me_per_training, labels, mask_on_labels
+    trid, vaid = train_test_split(trid, test_size=valid_size, random_state=0) if valid_size>0 else trid, None
+
+    mask_train_labels = np.zeros_like(labels)
+    mask_train_labels[trid] = 1
+
+    x_train, hb_train = _inner_take_hb(trid)
+    x_valid, hb_valid = _inner_take_hb(vaid) if valid_size>0 else (None, None)
+    x_test, hb_test = _inner_take_hb(teid)
+    x_all, hb_all = _inner_take_hb(np.arange(n))
+
+    return (x_train, hb_train), (x_valid, hb_valid), (x_test, hb_test), (x_all, hb_all), labels, mask_train_labels, trid, vaid, teid
+
 

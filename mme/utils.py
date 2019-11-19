@@ -10,7 +10,7 @@ def heardEnter():
     if os.name == 'nt':
         if msvcrt.kbhit():
             if msvcrt.getch() == b"q":
-                print("Quit key pressed, saving the model...")
+                print("Quit key pressed.")
                 return True
         else:
             return False
