@@ -15,6 +15,8 @@ posttrain_path = os.path.join(base_savings,"posttrain")
 def main(lr,seed,perc_soft,test_size, valid_size=0.,l2w=0.006, w_rule=1., ):
 
 
+
+
     documents, trid, teid, hb_all, me_per_inference, me_per_training, labels, mask_on_labels = datasets.citeseer_em(test_size, valid_size)
     num_examples = len(documents)
     num_classes = 6
