@@ -92,7 +92,7 @@ def main(lr,seed,lambda_0,l2w, test_size, valid_size, run_on_test=False):
         potentials.append(p3)
 
     P = mme.potentials.GlobalPotential(potentials)
-
+    pwt = mme.PieceWiseTraining(global_potential=P)
 
 
 
@@ -134,23 +134,6 @@ def main(lr,seed,lambda_0,l2w, test_size, valid_size, run_on_test=False):
     def em_step(new_hb):
 
         hb = new_hb
-        pwt = mme.PieceWiseTraining(global_potential=P, y=hb)
-
-        """BETA TRAINING"""
-        pwt.compute_beta_logical_potentials()
-        for p in potentials:
-            print(p, p.beta)
-
-        """NN TRAINING"""
-        epochs = 20
-
-        for _ in range(epochs):
-            pwt.maximize_likelihood_step(new_hb, x=x_all)
-            y_nn = nn(x_to_test)
-            acc_nn = tf.reduce_mean(
-                tf.cast(tf.equal(tf.argmax(y_to_test, axis=1), tf.argmax(y_nn, axis=1)), tf.float32))
-            print("TRAINING", acc_nn.numpy())
-
 
         """Fix the training hb for inference"""
         new_labels = tf.where(mask_train_labels > 0, labels, 0.5*tf.ones_like(labels))
@@ -169,9 +152,10 @@ def main(lr,seed,lambda_0,l2w, test_size, valid_size, run_on_test=False):
                                                         evidence_mask=evidence_mask,
                                                         learning_rate=lr)
 
-        P.potentials[1].beta = 0
+        max_beta = 2
         P.potentials[0].beta = lambda_0
         for i in range(steps_map):
+            P.potentials[1].beta = max_beta - max_beta * (steps_map - i) / steps_map
             map_inference.infer_step(x_all)
             y_map = tf.gather(map_inference.map()[0], indices_to_test)
             acc_map = tf.reduce_mean(
@@ -184,13 +168,31 @@ def main(lr,seed,lambda_0,l2w, test_size, valid_size, run_on_test=False):
         new_labels = tf.where(mask_train_labels > 0, labels, y_new)
         new_hb = tf.concat(
             (tf.reshape(tf.transpose(new_labels, [1, 0]), [1, -1]), hb_all[:, num_examples * num_classes:]), axis=1)
-        return new_hb
 
+
+        """NN TRAINING"""
+        epochs = 20
+
+        for _ in range(epochs):
+            pwt.maximize_likelihood_step(new_hb, x=x_all)
+            y_nn = nn(x_to_test)
+            acc_nn = tf.reduce_mean(
+                tf.cast(tf.equal(tf.argmax(y_to_test, axis=1), tf.argmax(y_nn, axis=1)), tf.float32))
+            print("TRAINING", acc_nn.numpy())
+
+        y_new = tf.gather(tf.eye(num_classes), tf.argmax(nn(x_all), axis=1), axis=0)
+
+        new_labels = tf.where(mask_train_labels > 0, labels, y_new)
+        new_hb = tf.concat(
+            (tf.reshape(tf.transpose(new_labels, [1, 0]), [1, -1]), hb_all[:, num_examples * num_classes:]), axis=1)
+
+        pwt.compute_beta_logical_potentials(y=new_hb)
 
     em_cycles = 4
     for i in range(em_cycles):
         if i == 0:
             new_hb = hb_pretrain = pretrain_step()
+            pwt.compute_beta_logical_potentials(y=new_hb)
         else:
             old_hb = new_hb
             new_hb = em_step(old_hb)
@@ -225,7 +227,7 @@ if __name__ == "__main__":
     seed = 0
 
     res = []
-    for a  in product( [0.01], [ (0.9,0.006)],[0.01]):
+    for a  in product( [0.01], [ (0.75,0.006),(0.25,0.006)],[0.01]):
     # for a  in product( [0.01], [(0.9,0)],[0.05]):
     # for a  in product([0.01], [0.01], [0.75]):
         lr, (test_size, l2w), lambda_0 = a

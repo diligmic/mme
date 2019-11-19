@@ -12,7 +12,7 @@ base_savings = os.path.join("savings", "citeseer")
 pretrain_path = os.path.join(base_savings,"pretrain")
 posttrain_path = os.path.join(base_savings,"posttrain")
 
-def main(lr,seed,test_size, valid_size=0.,l2w=0.006, w_rule=10., ):
+def main(lr,seed,test_size, valid_size=0.,l2w=0.006, w_rule=1000., ):
     (x_train, hb_train), (x_valid, hb_valid), (x_test, hb_test), (x_all, hb_all), labels, mask_train_labels, trid, vaid, teid = datasets.citeseer_em(test_size,valid_size)
     num_examples = len(x_all)
     num_classes = 6
@@ -74,16 +74,19 @@ def main(lr,seed,test_size, valid_size=0.,l2w=0.006, w_rule=10., ):
 
 
 
-    logic = True
-    epochs = 200
+    logic = False
+    epochs = 300
     y_test = labels[teid]
     for e in range(epochs):
+        if e>=200:
+            pretrain_acc=acc_nn
+            logic=True
         training_step(logic)
         y_nn = tf.nn.softmax(nn(x_test))
         acc_nn = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_nn, axis=1)), tf.float32))
         print(acc_nn)
 
-    return acc_nn, acc_nn
+    return pretrain_acc, acc_nn
 
     #Test accuracy after supervised step
     y_nn = tf.nn.softmax(nn(x_test))
@@ -133,7 +136,7 @@ if __name__ == "__main__":
     seed = 0
 
     res = []
-    for a  in product( [0.9, 0.75,0.5, 0.25, 0.1],[0.01]):
+    for a  in product( [0.25, 0.1],[0.01]):
         test_size,lr = a
         acc_map, acc_nn = main(lr=lr, seed=seed, l2w=0.006, test_size=test_size, valid_size=0. )
         acc_map, acc_nn = acc_map.numpy(), acc_nn.numpy()
