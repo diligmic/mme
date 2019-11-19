@@ -174,7 +174,7 @@ def citeseer(test_size = 0.5):
 
 
 
-def citeseer_em(test_size):
+def citeseer_em(test_size, valid_size):
 
 
     documents = np.load("data/citeseer/words.npy")
@@ -198,13 +198,14 @@ def citeseer_em(test_size):
         return x, hb
 
     trid, teid = train_test_split(np.arange(num_documents), test_size=test_size, random_state=0)
-    trid, vaid = train_test_split(trid, test_size=0.2, random_state=0)
+
+    trid, vaid = train_test_split(trid, test_size=valid_size, random_state=0) if valid_size>0 else trid, None
 
     mask_train_labels = np.zeros_like(labels)
     mask_train_labels[trid] = 1
 
     x_train, hb_train = _inner_take_hb(trid)
-    x_valid, hb_valid = _inner_take_hb(vaid)
+    x_valid, hb_valid = _inner_take_hb(vaid) if valid_size>0 else (None, None)
     x_test, hb_test = _inner_take_hb(teid)
     x_all, hb_all = _inner_take_hb(np.arange(n))
 
