@@ -22,60 +22,30 @@ def main(lr,seed,test_size, valid_size=0.,l2w=0.006, w_rule=10., ):
     tf.random.set_seed(seed)
 
 
-    """Logic Program Definition"""
-    o = mme.Ontology()
 
-    #Domains
-    docs = mme.Domain("Documents", data=x_all)
-    o.add_domain([docs])
-
-    # Predicates
-
-    preds = ["ag","ai", "db","ir","ml","hci"]
-    for name in preds:
-        p = mme.Predicate(name, domains=[docs])
-        o.add_predicate(p)
-
-    cite = mme.Predicate("cite", domains=[docs,docs], given=True)
-    o.add_predicate(cite)
-
-    """MME definition"""
-    potentials = []
-    #Supervision
-    indices = np.reshape(np.arange(num_classes * docs.num_constants),
-                         [num_classes, docs.num_constants]).T # T because we made classes as unary potentials
+    indices = np.reshape(np.arange(num_classes * num_examples),
+                         [num_classes, num_examples]).T # T because we made classes as unary potentials
     nn = tf.keras.Sequential()
     nn.add(tf.keras.layers.Input(shape=(x_all.shape[1],)))
     nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
     nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
     nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
     nn.add(tf.keras.layers.Dense(num_classes,use_bias=False))
-    p1 = mme.potentials.SupervisionLogicalPotential(nn, indices)
-    potentials.append(p1)
+
+    rng = np.arange(num_examples)
+    x_ids = np.reshape(np.tile(rng, [num_examples, 1]).T, [-1])
+    y_ids = np.tile(rng, [num_examples])
+
+    l = mme.logic.LukasiewiczLogic
+
+    cite = np.tile(np.expand_dims(hb_all[0,num_examples*num_classes:],1), [1, num_classes])
 
 
-    #Mutual Exclusivity (needed for inference , since SupervisionLogicalPotential already subsumes it during training)
-    p2 = mme.potentials.MutualExclusivityPotential(indices=indices)
-    potentials.append(p2)
 
-
-    #Logical
-    logical_preds = []
-    constraints = []
-    for name in preds:
-        c = mme.Formula(definition="%s(x) and cite(x,y) -> %s(y)" % (name,name), ontology=o)
-        p3 = mme.potentials.LogicPotential(formula=c,logic=mme.logic.BooleanLogic)
-        potentials.append(p3)
-        constraints.append(c)
 
 
     adam = tf.keras.optimizers.Adam(lr=0.001)
 
-
-    def make_hb_with_model(neural_softmax, hb_all):
-        new_hb = tf.concat(
-            (tf.reshape(tf.transpose(neural_softmax, [1, 0]), [1, -1]), hb_all[:, num_examples * num_classes:]), axis=1)
-        return new_hb
 
 
     def training_step(logic=False):
@@ -87,14 +57,14 @@ def main(lr,seed,test_size, valid_size=0.,l2w=0.006, w_rule=10., ):
                 tf.nn.softmax_cross_entropy_with_logits(labels=labels[trid],
                                                         logits=neural_logits)) + tf.reduce_sum(nn.losses)
             if logic:
-                neural_softmax = tf.nn.softmax(nn(x_all))
-                hb_model_train = make_hb_with_model(neural_softmax, hb_all)
 
-                logical_loss = 0
+                preds = tf.nn.softmax(nn(x_all))
 
-                for c in constraints:
-                    groundings = c.ground(herbrand_interpretation=hb_model_train)
-                    logical_loss += tf.reduce_mean(- c.compile(groundings, mme.logic.LukasiewiczLogic))
+                px = tf.gather(preds, x_ids)
+                py = tf.gather(preds, y_ids)
+
+                rule = l._implies([l._and([px, cite]), py])
+                logical_loss = - tf.reduce_mean(tf.reduce_sum(rule, axis=1))
 
                 total_loss += w_rule*logical_loss
 
