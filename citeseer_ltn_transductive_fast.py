@@ -28,8 +28,8 @@ def main(lr,seed,test_size, valid_size=0.,l2w=0.006, w_rule=1000., ):
     nn = tf.keras.Sequential()
     nn.add(tf.keras.layers.Input(shape=(x_all.shape[1],)))
     nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
-    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
-    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(30, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(10, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
     nn.add(tf.keras.layers.Dense(num_classes,use_bias=False))
 
     rng = np.arange(num_examples)
@@ -136,7 +136,7 @@ if __name__ == "__main__":
     seed = 0
 
     res = []
-    for a  in product( [0.25, 0.1],[0.01]):
+    for a  in product( [0.9],[0.01]):
         test_size,lr = a
         acc_map, acc_nn = main(lr=lr, seed=seed, l2w=0.006, test_size=test_size, valid_size=0. )
         acc_map, acc_nn = acc_map.numpy(), acc_nn.numpy()

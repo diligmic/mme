@@ -6,6 +6,7 @@ import os
 from itertools import product
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
+
 tf.get_logger().setLevel('ERROR')
 
 base_savings = os.path.join("savings", "citeseer")
@@ -70,8 +71,8 @@ def main(lr,seed,lambda_0,l2w, test_size, valid_size, run_on_test=False):
     nn = tf.keras.Sequential()
     nn.add(tf.keras.layers.Input(shape=(x_train.shape[1],)))
     nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu,kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
-    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu,kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
-    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu,kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(30, activation=tf.nn.relu,kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(10, activation=tf.nn.relu,kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
     # nn.add(tf.keras.layers.Dense(50, activation=tf.nn.sigmoid,kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
     nn.add(tf.keras.layers.Dense(num_classes, use_bias=False))
     p1 = mme.potentials.SupervisionLogicalPotential(nn, indices)
@@ -225,7 +226,7 @@ if __name__ == "__main__":
     seed = 0
 
     res = []
-    for a  in product( [0.01], [ (0.9,0.006)],[0.01]):
+    for a  in product( [0.01], [(0.9,0.006)],[0.001]):
     # for a  in product( [0.01], [(0.9,0)],[0.05]):
     # for a  in product([0.01], [0.01], [0.75]):
         lr, (test_size, l2w), lambda_0 = a

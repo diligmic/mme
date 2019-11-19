@@ -175,7 +175,7 @@ if __name__ == "__main__":
     # for a  in product([1], [0.01], [0.5],[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1]):
     # for a  in product([1], [0.01], [0.1],[0.05]):
         w_rule, lr, test_size, lambda_0 = a
-        acc_map, acc_nn = main(lr=lr, seed=seed, w_rule=w_rule, l2w=0.006, test_size=test_size, valid_size=0., lambda_0=lambda_0)
+        acc_map, acc_nn = main(lr=lr, seed=seed, w_rule=w_rule, l2w=0.006, test_size=test_size, valid_size=0.2, lambda_0=lambda_0, run_on_test=False)
         acc_map, acc_nn = acc_map.numpy(), acc_nn.numpy()
         res.append("\t".join([str(a) for a in [ w_rule, lr, test_size, lambda_0, acc_map, str(acc_nn)+"\n"]]))
         for i in res:
