@@ -12,10 +12,10 @@ base_savings = os.path.join("savings", "citeseer")
 pretrain_path = os.path.join(base_savings,"pretrain")
 posttrain_path = os.path.join(base_savings,"posttrain")
 
-def main(lr,seed,perc_soft,l2w, w_rule=1.):
+def main(lr,seed,perc_soft,test_size, valid_size=0.,l2w=0.006, w_rule=1., ):
 
 
-    documents, trid, teid, hb_all, me_per_inference, me_per_training, labels, mask_on_labels = datasets.citeseer_em()
+    documents, trid, teid, hb_all, me_per_inference, me_per_training, labels, mask_on_labels = datasets.citeseer_em(test_size, valid_size)
     num_examples = len(documents)
     num_classes = 6
 
@@ -48,14 +48,18 @@ def main(lr,seed,perc_soft,l2w, w_rule=1.):
                          [num_classes, docs.num_constants]).T # T because we made classes as unary potentials
     nn = tf.keras.Sequential()
     nn.add(tf.keras.layers.Input(shape=(documents.shape[1],)))
-    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.sigmoid))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
     nn.add(tf.keras.layers.Dense(num_classes,use_bias=False))
     p1 = mme.potentials.SupervisionLogicalPotential(nn, indices)
     potentials.append(p1)
 
+
     #Mutual Exclusivity (needed for inference , since SupervisionLogicalPotential already subsumes it during training)
     p2 = mme.potentials.MutualExclusivityPotential(indices=indices)
     potentials.append(p2)
+
 
     #Logical
     logical_preds = []
@@ -104,7 +108,7 @@ def main(lr,seed,perc_soft,l2w, w_rule=1.):
 
 
 
-    logic = True
+    logic = False
     epochs = 150
     y_test = labels[teid]
     for e in range(epochs):
@@ -164,9 +168,9 @@ if __name__ == "__main__":
     seed = 0
 
     res = []
-    for a  in product([0], [0.01]):
-        perc, lr = a
-        acc_map, acc_nn = main(lr=lr, seed=seed, perc_soft=perc, l2w=0.1)
+    for a  in product([0], [0.1],[0.01]):
+        perc,test_size lr = a
+        acc_map, acc_nn = main(lr=lr, seed=seed, perc_soft=perc, l2w=0.006, test_size=test_size, valid_size=0. )
         acc_map, acc_nn = acc_map.numpy(), acc_nn.numpy()
         res.append("\t".join([str(a) for a in [perc, lr, acc_map, str(acc_nn)+"\n"]]))
         for i in res:
