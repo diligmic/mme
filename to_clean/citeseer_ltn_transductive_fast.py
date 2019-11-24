@@ -4,7 +4,7 @@ import datasets
 import numpy as np
 import os
 from itertools import product
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 tf.get_logger().setLevel('ERROR')
 
@@ -12,10 +12,15 @@ base_savings = os.path.join("savings", "citeseer")
 pretrain_path = os.path.join(base_savings,"pretrain")
 posttrain_path = os.path.join(base_savings,"posttrain")
 
-def main(lr,seed,test_size, valid_size=0.,l2w=0.006, w_rule=1000., ):
-    (x_train, hb_train), (x_valid, hb_valid), (x_test, hb_test), (x_all, hb_all), labels, mask_train_labels, trid, vaid, teid = datasets.citeseer_em(test_size,valid_size)
+def main(lr,seed,test_size, valid_size=0.,l2w=0.006, w_rule=500., run_on_test=False):
+    (x_train, hb_train), (x_valid, hb_valid), (x_test, hb_test), (x_all, hb_all), labels, mask_train_labels, trid, vaid, teid = datasets.citeseer_em(test_size,valid_size,seed)
     num_examples = len(x_all)
     num_classes = 6
+
+    if not run_on_test:
+        teid = vaid
+        x_test = x_valid
+        hb_test = hb_valid
 
     #I set the seed after since i want the dataset to be always the same
     np.random.seed(seed)
@@ -28,8 +33,8 @@ def main(lr,seed,test_size, valid_size=0.,l2w=0.006, w_rule=1000., ):
     nn = tf.keras.Sequential()
     nn.add(tf.keras.layers.Input(shape=(x_all.shape[1],)))
     nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
-    nn.add(tf.keras.layers.Dense(30, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
-    nn.add(tf.keras.layers.Dense(10, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
+    nn.add(tf.keras.layers.Dense(50, activation=tf.nn.relu, kernel_regularizer=tf.keras.regularizers.l2(l2w)))  # up to the last hidden layer
     nn.add(tf.keras.layers.Dense(num_classes,use_bias=False))
 
     rng = np.arange(num_examples)
@@ -78,7 +83,7 @@ def main(lr,seed,test_size, valid_size=0.,l2w=0.006, w_rule=1000., ):
     epochs = 300
     y_test = labels[teid]
     for e in range(epochs):
-        if e>=200:
+        if e==200:
             pretrain_acc=acc_nn
             logic=True
         training_step(logic)
@@ -133,19 +138,20 @@ def main(lr,seed,test_size, valid_size=0.,l2w=0.006, w_rule=1000., ):
 
 
 if __name__ == "__main__":
-    seed = 0
-
     res = []
-    for a  in product( [0.9],[0.01]):
-        test_size,lr = a
-        acc_map, acc_nn = main(lr=lr, seed=seed, l2w=0.006, test_size=test_size, valid_size=0. )
+    np.random.seed(0)
+    seeds=np.random.choice(np.arange(1000), [10], replace=False)
+    # seeds=[0]
+    for a  in product(seeds,[0.1, 0.25, 0.5, 0.75, 0.9],[500]):
+        seed, test_size,w_rule = a
+        acc_map, acc_nn = main(lr=0.001, seed=seed, l2w=0.006, test_size=test_size, valid_size=0., w_rule=w_rule, run_on_test=True)
         acc_map, acc_nn = acc_map.numpy(), acc_nn.numpy()
-        res.append("\t".join([str(a) for a in [ test_size, acc_map, str(acc_nn)+"\n"]]))
+        res.append(",".join([str(a) for a in [seed, test_size, w_rule, acc_map, str(acc_nn)+"\n"]]))
         for i in res:
             print(i)
 
-    with open("res_dlm_%d"%seed, "w") as file:
-        file.write("perc, lr, acc_map, acc_nn\n")
+    with open("res_ltn_10splits", "w") as file:
+        file.write("seed, test_size, w_rule, acc_map, acc_nn\n")
         file.writelines(res)
 
 

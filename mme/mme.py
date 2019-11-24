@@ -160,7 +160,7 @@ class PieceWiseTraining():
                     p.beta = tf.Variable(100.)
 
 
-    def maximize_likelihood_step(self, y, x=None):
+    def maximize_likelihood_step(self, y, x=None, soft_xent = False):
         """The method returns a training operation for maximizing the likelihood of the model."""
 
         if self.minibatch is not None:
@@ -177,7 +177,10 @@ class PieceWiseTraining():
 
                     y = p._reshape_y(y)
                     o = p.model(x)
-                    xent = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits = o, labels=y))
+                    if not soft_xent:
+                        xent = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits = o, labels=y))
+                    else:
+                        xent = tf.reduce_mean(- y * tf.log(tf.nn.softmax(o)))
                     xent += tf.reduce_sum(p.model.losses)
 
 
