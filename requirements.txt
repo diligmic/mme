@@ -1,5 +1,0 @@
-tensorflow
-scikit-learn
-pyparsing
-scipy
-matplotlib

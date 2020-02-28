@@ -1,2 +1,0 @@
-# mme
-MiniMax Entropy Models

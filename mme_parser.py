@@ -3,8 +3,7 @@ ParserElement.enablePackrat()
 from collections import OrderedDict
 from itertools import product
 import numpy as np
-import tensorflow as tf
-from .logic import *
+from logic import *
 import itertools
 class Variable():
 
@@ -113,11 +112,11 @@ class Formula(object):
         self.num_given = sum([1 for a in self.atoms if a.predicate.given])
 
 
-    def all_grounding_assignments(self):
+    def all_assignments_to_a_grounding(self):
         #this corresponds to 1 sample, 1 grounding, 2^n possible assignments, n values of a single assignment [1,1, 2^n, n]
         n = len(self.atoms)
         l = list(itertools.product([True, False], repeat=n))
-        return np.expand_dims(np.expand_dims(np.array(l).astype(np.float32),axis=0), axis=1)
+        return np.array(l)
 
     def all_sample_groundings_given_evidence(self, evidence, evidence_mask):
 
@@ -150,6 +149,11 @@ class Formula(object):
 
         final = tf.transpose(first + second, [1, 2, 3, 0])
         return final
+
+
+    def all_sample_groundings_given_evidencev2(self, evidence, evidence_mask):
+
+        pass
 
     def _create_or_get_variable(self, id, domain):
         if id in self.variables:

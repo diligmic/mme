@@ -1,13 +1,28 @@
 import tensorflow as tf
-# import tensorflow_probability as tfp
-import numpy as np
+import abc
+import utils
 
-# class Sampler(object):
-#
-#     @tf.function
-#     def sample(self, conditional_data=None, num_samples=None, minibatch = None):
-#         pass
-#
+
+
+
+class Inference():
+
+    def __init__(self, global_potential, parameters=None):
+        self.global_potential = global_potential
+        self.parameters = parameters
+
+    @abc.abstractmethod
+    def infer(self, x=None):
+        pass
+
+
+
+class Sampler(object):
+
+    @tf.function
+    def sample(self, conditional_data=None, num_samples=None, minibatch = None):
+        pass
+
 # class SamplerAggregation(Sampler):
 #
 #
@@ -262,85 +277,82 @@ import numpy as np
 #         # return samples
 #         return tf.concat(samples,axis=0)[:num_samples]
 #
-# class GPUGibbsSampler(Sampler):
+class GPUGibbsSampler(Sampler):
+
+
+    def __init__(self, potential, num_variables, inter_sample_burn=1, num_chains = 10, initial_state=None, evidence = None, evidence_mask = None, flips=None, num_examples=1):
+
+        self.potential = potential
+        self.inter_sample_burn = inter_sample_burn
+        self.num_variables = num_variables
+        self.num_examples = num_examples
+        self.num_chains = num_chains
+
+        if initial_state is None:
+            self.current_state = tf.cast(tf.random.uniform(shape=[self.num_examples, self.num_chains, num_variables], minval=0,
+                                                                           maxval=2, dtype=tf.int32), tf.float32)
+        else:
+            self.current_state = tf.cast(initial_state, tf.float32)
+        self.evidence = evidence
+        if evidence is not None:
+            self.evidence = tf.tile(tf.expand_dims(evidence, axis=1), [1, num_chains, 1])
+            self.evidence_mask =  tf.tile(tf.expand_dims(evidence_mask, axis=1), [1, num_chains, 1])
+        self.flips = flips if flips is not None and flips > 0 else num_variables
+
+    @tf.function
+    def __sample(self, current_state, conditional_data=None, num_samples=None, minibatch = None):
+
+
+        # Gibbs sampling in random scan mode
+        # todo(giuseppe) allow ordered scan or other euristics from outside
+
+        n_ex = self.num_examples if minibatch is None else len(minibatch)
+
+        #todo(giuseppe) improve the speed of this shuffling and of the third dimension. It has slowed too much.
+        scan = tf.reshape(tf.range(self.num_variables, dtype=tf.int32), [-1, 1, 1])
+        scan = tf.tile(scan, [1, n_ex, self.num_chains]) #num_variables, num_examples, num_chains (needed for shuffling along the axis=0
+        K = tf.random.shuffle(scan)[:self.flips,:,:]
+        K = tf.transpose(K, [1, 2, 0])
+        for i in range(self.flips):
+            k = K[:,:,i]
+
+            mask = tf.one_hot(k, depth=self.num_variables)
+            off_state = current_state * (1 - mask)
+            on_state = off_state + mask
+            rand = tf.random.uniform(shape=[n_ex, self.num_chains])
+
+            potential_on = self.potential(on_state, conditional_data)
+            potential_off = self.potential(off_state, conditional_data)
+
+
+            p = tf.sigmoid(potential_on - potential_off)
+            cond = tf.reshape(rand < p, shape=[n_ex, self.num_chains, 1])
+            current_state = tf.where(cond, on_state, off_state)
+            if self.evidence is not None:
+                current_state = tf.where(self.evidence_mask, self.evidence, current_state)
+
+
+
+        return current_state
+
+
+
+    def sample(self, conditional_data=None, num_samples=None, minibatch=None):
+
+        current_state = self.current_state if minibatch is None else tf.gather(self.current_state, minibatch)
+
+        for _ in range(self.inter_sample_burn):
+
+            sample = self.__sample(current_state,conditional_data, num_samples, minibatch)
+            if minibatch is None:
+                self.current_state = sample
+            else:
+                self.current_state = tf.tensor_scatter_nd_update(self.current_state, tf.reshape(minibatch,[-1,1]), sample)
+
+        return sample
+
+
 #
-#
-#     def __init__(self, potential, num_variables, inter_sample_burn=0, num_chains = 10, initial_state=None, evidence = None, evidence_mask = None, flips=None, num_examples=1):
-#
-#         self.potential = potential
-#         self.inter_sample_burn = inter_sample_burn
-#         self.num_variables = num_variables
-#         self.num_examples = num_examples
-#         self.num_chains = num_chains
-#
-#         if initial_state is None:
-#             self.current_state = tf.cast(tf.random.uniform(shape=[self.num_examples, self.num_chains, num_variables], minval=0,
-#                                                                            maxval=2, dtype=tf.int32), tf.float32)
-#         else:
-#             self.current_state = tf.cast(initial_state, tf.float32)
-#         self.evidence = evidence
-#         if evidence is not None:
-#             self.evidence = tf.tile(tf.expand_dims(evidence, axis=1), [1, num_chains, 1])
-#             self.evidence_mask =  tf.tile(tf.expand_dims(evidence_mask, axis=1), [1, num_chains, 1])
-#         self.flips = flips if flips is not None else num_variables
-#
-#
-#     @tf.function
-#     def sample(self, conditional_data=None, num_samples=None, minibatch = None):
-#
-#         if num_samples is not None:
-#             num_chain_temp = ((num_samples-1) // self.num_chains) + 1
-#         else:
-#             num_chain_temp = 1
-#
-#         current_state = self.current_state if minibatch is None else tf.gather(self.current_state, minibatch)
-#
-#
-#
-#         #todo(giuseppe) Add initial and inter-sample burn for better sampling in small problems
-#         samples = []
-#         for i in range(num_chain_temp):
-#
-#             # Gibbs sampling in random scan mode
-#             # todo(giuseppe) allow ordered scan or other euristics from outside
-#
-#
-#             #todo(giuseppe) improve the speed of this shuffling and of the third dimension. It has slowed too much.
-#             scan = tf.reshape(tf.range(self.num_variables, dtype=tf.int32), [-1, 1, 1])
-#             scan = tf.tile(scan, [1, self.num_examples, self.num_chains]) #num_variables, num_examples, num_chains (needed for shuffling along the axis=0
-#             K = tf.random.shuffle(scan)[:self.flips,:,:]
-#             K = tf.transpose(K, [1, 2, 0])
-#             for i in range(self.flips):
-#                 k = K[:,:,i]
-#
-#                 mask = tf.one_hot(k, depth=self.num_variables)
-#                 off_state = current_state * (1 - mask)
-#                 on_state = off_state + mask
-#                 rand = tf.random.uniform(shape=[self.num_examples, self.num_chains])
-#
-#
-#                 potential_on = self.potential(on_state, conditional_data)
-#                 potential_off = self.potential(off_state, conditional_data)
-#
-#
-#                 p = tf.sigmoid(potential_on - potential_off)
-#                 cond = tf.reshape(rand < p, shape=[self.num_examples, self.num_chains, 1])
-#                 current_state = tf.where(cond, on_state, off_state)
-#                 if self.evidence is not None: #todo(giuseppe) handle with multinomial. May increase shuffling speed also (previous todo)
-#                     current_state = tf.where(self.evidence_mask, self.evidence, current_state)
-#
-#             samples.append(current_state)
-#
-#         if minibatch is None:
-#             self.current_state = samples[-1]
-#         else:
-#             #todo minibatches not handled in v2
-#             raise Exception("Minibatches not handled in v2")
-#             ass = tf.scatter_update(self.current_state, minibatch, samples[-1])
-#         # samples = tf.reshape(samples,[-1, self.num_variables]) #todo(Giuseppe) check if was it necessary with minibatches
-#         return tf.concat(samples,axis=1)[:,:num_samples,:]
-#
-# #
 #
 # class PartialGPUGibbsKernelTF1(tfp.mcmc.TransitionKernel):
 #
@@ -412,29 +424,22 @@ import numpy as np
 #
 #
 
-class FuzzyMAPInference():
+class FuzzyMAPInference(Inference):
 
-    def __init__(self, y_shape, potential, logic, evidence, evidence_mask, learning_rate=0.001, initial_value=None, external_map=None):
+    def __init__(self,  global_potential, preferences, initial_value=None, external_map=None):
 
-        # MAP
-        self.potential = potential
+        super(FuzzyMAPInference, self).__init__(global_potential, preferences)
+        self.potential = global_potential
         for p in self.potential.potentials:
-            p.logic = logic
-
-        self.y_shape = y_shape
-        self.var_dict = external_map
-        if self.var_dict is None:
-            self.var_map =  tf.Variable(initial_value) if initial_value is not None else tf.Variable(0.5 * tf.ones(y_shape))
-        else:
-            self.var_map = self.var_dict["var"]
-        self.opt = tf.keras.optimizers.Adam(learning_rate)
-        self.evidence = evidence
-        self.evidence_mask = evidence_mask
+            p.logic = self.parameters["logic"]
+        self.var_map = self.parameters["var"]
+        self.opt = self.parameters["opt_var_map"]
+        self.evidence = self.parameters["evidence"]
+        self.evidence_mask = self.parameters["evidence_mask"]
 
 
 
     def infer_step(self, x=None):
-
 
         with tf.GradientTape() as tape:
             y = self.map()
@@ -444,15 +449,27 @@ class FuzzyMAPInference():
         self.opt.apply_gradients(grad_vars)
 
     def map(self):
-        if self.var_dict is None:
-            y_map = tf.where(self.evidence_mask, self.evidence, self.var_map)
-            return tf.sigmoid(10*(y_map - 0.5))
-        else:
-            external_map = tf.nn.softmax(self.var_dict["var"])
-            external_map = tf.where(self.var_dict["mask_train_labels"] > 0, self.var_dict["labels"], external_map)
-            external_map = tf.concat(
-                (tf.reshape(tf.transpose(external_map, [1, 0]), [1, -1]), self.var_dict["hb_all"][:, self.var_dict["num_examples"] * self.var_dict["num_classes"]:]),
-                axis=1)
-            return external_map
+        y_map = tf.where(self.evidence_mask, self.evidence, tf.sigmoid(self.var_map))
+        return y_map
 
 
+    def infer(self, x=None):
+        steps_map = 10
+        for i in range(steps_map):
+            self.infer_step(x)
+            if "evaluate" in self.parameters and i % 2 == 0:
+                y_map = tf.gather(self.map()[0], self.parameters["indices_to_test"])
+                y_test = tf.gather(tf.cast(self.evidence[0], dtype=tf.int32), self.parameters["indices_to_test"])
+                acc_map = tf.reduce_mean(
+                    tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_map, axis=1)), tf.float32))
+                print("Accuracy MAP Fuzzy at %d" % i, acc_map.numpy())
+        return self.map()
+
+
+FUZZY = "f0221"
+
+def create_inference(id, P, parameters):
+    if id == FUZZY:
+        return FuzzyMAPInference(P, parameters)
+    else:
+        raise Exception("Training algorithm %s is not known." % str(id))
