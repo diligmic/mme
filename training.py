@@ -136,6 +136,7 @@ class PieceWiseTrainingv2(Train):
         self.optimizer_nn = self.parameters["adam_nn"]
         self.optimizer_logic = self.parameters["adam_logic"]
 
+
     def compute_beta_logical_potentials(self, y, x=None, y_mask=None, evidence_mask= None, ):
 
         for p in self.global_potential.potentials:
@@ -143,7 +144,7 @@ class PieceWiseTrainingv2(Train):
             if isinstance(p, LogicPotential):
 
                 if np.all(np.logical_or(y_mask, evidence_mask)):
-                    ntrue, nfalse = p.true_false_assignments(x=x, evidence=y.astype(np.bool), evidence_mask=evidence_mask.astype(np.bool))
+                    ntrue, nfalse = p.true_false_assignments(x=x, evidence=y, evidence_mask=evidence_mask)
                     ntrue, nfalse = tf.reduce_sum(ntrue), tf.reduce_sum(nfalse)
                     g = p.ground(y=y, x=x)
                     phi_on_groundings = p.call_on_groundings(g,x)
@@ -171,8 +172,7 @@ class PieceWiseTrainingv2(Train):
 
                 with tf.GradientTape(persistent=True) as tape:
 
-                    y = p._reshape_y(y)
-                    x = p._reshape_x(x)
+                    y, x  = p._reshape(y,x)
                     o = p.model(x)
                     if not soft_xent:
                         xent = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits = o, labels=y))
@@ -193,7 +193,7 @@ class PieceWiseTrainingv2(Train):
         train_mask = self.parameters["train_mask"]
         train_and_evidence_mask = np.logical_or(evidence_mask, train_mask)
 
-        self.compute_beta_logical_potentials(y=np.array(y*train_and_evidence_mask).astype(np.bool), x=None, evidence_mask=np.array(evidence_mask).astype(np.bool), y_mask=np.array(train_mask).astype(np.bool))
+        self.compute_beta_logical_potentials(y=tf.logical_and(y,train_and_evidence_mask), x=None, evidence_mask=tf.cast(evidence_mask, tf.bool), y_mask=tf.cast(train_mask,tf.bool))
 
         # Train w
         epochs = 10
@@ -232,10 +232,11 @@ class EMTraining():
         self.training = training
         self.inference = inference
 
-    def em(self, y, x=None, num_cycles=10):
+    def em(self, x=None, num_cycles=10):
 
         for em_step in range(num_cycles):
-            self.training.train(y,x)
             y = self.inference.infer(x)
+            self.training.train(y,x)
+
 
 

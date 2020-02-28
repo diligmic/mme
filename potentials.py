@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import abc
+import mme
 
 
 
@@ -200,7 +201,7 @@ class SupervisionPotentialPartial(SupervisionPotential):
 
     def _reshape(self, y, x):
         y = tf.gather(y, self.indices_y, axis=-1)
-        x = tf.gather(x, self.indices_x, axis=-1)
+        x = tf.gather(x, self.indices_x, axis=0)
         return y, x
 
 

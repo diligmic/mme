@@ -430,8 +430,6 @@ class FuzzyMAPInference(Inference):
 
         super(FuzzyMAPInference, self).__init__(global_potential, preferences)
         self.potential = global_potential
-        for p in self.potential.potentials:
-            p.logic = self.parameters["logic"]
         self.var_map = self.parameters["var"]
         self.opt = self.parameters["opt_var_map"]
         self.evidence = self.parameters["evidence"]
@@ -463,7 +461,7 @@ class FuzzyMAPInference(Inference):
                 acc_map = tf.reduce_mean(
                     tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_map, axis=1)), tf.float32))
                 print("Accuracy MAP Fuzzy at %d" % i, acc_map.numpy())
-        return self.map()
+        return self.map() > 0.5
 
 
 FUZZY = "f0221"
