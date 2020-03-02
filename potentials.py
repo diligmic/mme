@@ -148,7 +148,6 @@ class LogicPotential(CountableGroundingPotential):
             n_false = (2 ** self.cardinality) - n_true
             return n_true, n_false
         else:
-
             #can we broadcast
 
             # we assume evidence and evidence_mask to have the same shape of y

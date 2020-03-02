@@ -352,6 +352,84 @@ class GPUGibbsSampler(Sampler):
         return sample
 
 
+
+class GPUGibbsSamplerV2(Sampler):
+
+
+    def __init__(self, potential, num_variables, inter_sample_burn=1, num_chains = 10, initial_state=None, evidence = None, evidence_mask = None, flips=None, num_examples=1):
+
+        self.potential = potential
+        self.inter_sample_burn = inter_sample_burn
+        self.num_variables = num_variables
+        self.num_examples = num_examples
+        self.num_chains = num_chains
+
+        if initial_state is None:
+            self.current_state = tf.cast(tf.random.uniform(shape=[self.num_examples, self.num_chains, num_variables], minval=0,
+                                                                           maxval=2, dtype=tf.int32), tf.float32)
+        else:
+            self.current_state = tf.tile(tf.expand_dims(tf.cast(initial_state, tf.float32), axis=1), [1, self.num_chains, 1])
+        self.evidence = evidence
+        if evidence is not None:
+            self.evidence = evidence
+            self.evidence_mask = tf.cast(evidence_mask, tf.int32)
+        if flips is not None and flips > 0:
+            self.flips = flips
+        elif self.evidence is not None:
+            self.flips = tf.reduce_max(tf.reduce_sum(1 - evidence_mask, axis=-1)) #check the maximum number of non-observed
+        else:
+            self.flips = num_variables
+
+    #@tf.function
+    def __sample(self, current_state, conditional_data=None, num_samples=None, minibatch = None):
+
+
+        # Gibbs sampling in random scan mode
+        # todo(giuseppe) allow ordered scan or other euristics from outside
+
+        n_ex = self.num_examples if minibatch is None else len(minibatch)
+
+        logits = tf.math.log((1 - self.evidence_mask) / tf.reduce_sum(1 - self.evidence_mask, axis=-1, keepdims=True))
+        samples = tf.random.categorical(logits=logits, num_samples=tf.cast(self.flips*self.num_chains, tf.int32), dtype=None, seed=None, name=None)
+        samples = tf.reshape(samples, [-1, self.num_chains, self.flips])
+        masks = tf.one_hot(samples, depth=self.num_variables)
+        for i in range(self.flips):
+            mask = masks[:,:,i,:]
+
+            off_state = current_state * (1 - mask)
+            on_state = off_state + mask
+            rand = tf.random.uniform(shape=[n_ex, self.num_chains])
+
+            potential_on = self.potential(on_state, conditional_data)
+            potential_off = self.potential(off_state, conditional_data)
+
+
+            p = tf.sigmoid(potential_on - potential_off)
+            cond = tf.reshape(rand < p, shape=[n_ex, self.num_chains, 1])
+            current_state = tf.where(cond, on_state, off_state)
+
+
+
+        return current_state
+
+
+
+    def sample(self, conditional_data=None, num_samples=None, minibatch=None):
+
+        current_state = self.current_state if minibatch is None else tf.gather(self.current_state, minibatch)
+
+        for _ in range(self.inter_sample_burn):
+
+            sample = self.__sample(current_state,conditional_data, num_samples, minibatch)
+            if minibatch is None:
+                self.current_state = sample
+            else:
+                self.current_state = tf.tensor_scatter_nd_update(self.current_state, tf.reshape(minibatch,[-1,1]), sample)
+
+        return sample
+
+
+
 #
 #
 # class PartialGPUGibbsKernelTF1(tfp.mcmc.TransitionKernel):
@@ -426,7 +504,7 @@ class GPUGibbsSampler(Sampler):
 
 class FuzzyMAPInference(Inference):
 
-    def __init__(self,  global_potential, preferences, initial_value=None, external_map=None):
+    def __init__(self,  global_potential, preferences):
 
         super(FuzzyMAPInference, self).__init__(global_potential, preferences)
         self.potential = global_potential
@@ -464,10 +542,118 @@ class FuzzyMAPInference(Inference):
         return self.map() > 0.5
 
 
+class GibbsSamplingInference(Inference):
+
+    def __init__(self,  global_potential, preferences):
+
+        super(GibbsSamplingInference, self).__init__(global_potential, preferences)
+        self.potential = global_potential
+
+        self.sampler = GPUGibbsSamplerV2(potential=self.potential,
+                                         num_variables = self.parameters["num_variables"],
+                                         inter_sample_burn=1,
+                                         num_chains = self.parameters["num_chains"],
+                                         initial_state=self.parameters["initial_state"],
+                                         evidence = self.parameters["evidence"],
+                                         evidence_mask = self.parameters["evidence_mask"],
+                                         flips=None,
+                                         num_examples=1)
+
+        self.num_samples = self.parameters["num_samples"]
+
+
+    def infer(self, x=None):
+
+        res = []
+        for _ in range(self.num_samples // self.sampler.num_chains + 1):
+            res.append(self.sampler.sample(conditional_data=x))
+
+        res = tf.concat(res, axis=1)
+        return tf.reduce_mean(res, axis=1) > 0.5
+
+
+
+class FuzzyMAPGibbsSamplingInference(Inference):
+
+
+    def __init__(self,global_potential,preferences):
+        super(FuzzyMAPGibbsSamplingInference, self).__init__(global_potential, preferences)
+        self.potential = global_potential
+        self.var_map = self.parameters["var"]
+        self.opt = self.parameters["opt_var_map"]
+        self.evidence = self.parameters["evidence"]
+        self.evidence_mask = self.parameters["evidence_mask"]
+
+
+
+    def _create_sampler(self):
+        self.sampler = GPUGibbsSamplerV2(potential=self.potential,
+                                         num_variables=self.parameters["num_variables"],
+                                         inter_sample_burn=1,
+                                         num_chains=self.parameters["num_chains"],
+                                         initial_state=self.map_state,
+                                         evidence=self.parameters["evidence"],
+                                         evidence_mask=self.parameters["evidence_mask"],
+                                         flips=None,
+                                         num_examples=1)
+
+        self.num_samples = self.parameters["num_samples"]
+
+
+    def infer_gs(self, x=None):
+        res = []
+        for _ in range(self.num_samples // self.sampler.num_chains + 1):
+            res.append(self.sampler.sample(conditional_data=x))
+
+        res = tf.concat(res, axis=1)
+        return tf.reduce_mean(res, axis=1) > 0.5
+
+
+
+    def infer_step(self, x=None):
+
+        with tf.GradientTape() as tape:
+            y = self.map()
+            p_m = - self.potential(y, x=x)
+        grad = tape.gradient(p_m, self.var_map)
+        grad_vars = [(grad, self.var_map)]
+        self.opt.apply_gradients(grad_vars)
+
+    def map(self):
+        y_map = tf.where(self.evidence_mask, self.evidence, tf.sigmoid(self.var_map))
+        return y_map
+
+
+    def infer_fuzzy(self, x=None):
+        steps_map = 10
+        for i in range(steps_map):
+            self.infer_step(x)
+            if "evaluate" in self.parameters and i % 2 == 0:
+                y_map = tf.gather(self.map()[0], self.parameters["indices_to_test"])
+                y_test = tf.gather(tf.cast(self.evidence[0], dtype=tf.int32), self.parameters["indices_to_test"])
+                acc_map = tf.reduce_mean(
+                    tf.cast(tf.equal(tf.argmax(y_test, axis=1), tf.argmax(y_map, axis=1)), tf.float32))
+                print("Accuracy MAP Fuzzy at %d" % i, acc_map.numpy())
+        return self.map() > 0.5
+
+    def infer(self,x=None):
+
+        self.map_state = self.infer_fuzzy(x)
+        self._create_sampler()
+        return self.infer_gs(x)
+
+
 FUZZY = "f0221"
+GIBBS_SAMPLING = "gi88s 54mp1in6"
+FUZZYGS = FUZZY + GIBBS_SAMPLING
 
 def create_inference(id, P, parameters):
     if id == FUZZY:
         return FuzzyMAPInference(P, parameters)
+    elif id == GIBBS_SAMPLING:
+        return GibbsSamplingInference(P, parameters)
+    elif id == FUZZYGS:
+        return FuzzyMAPGibbsSamplingInference(P, parameters)
+
     else:
         raise Exception("Training algorithm %s is not known." % str(id))
