@@ -16,13 +16,16 @@ import time
 eps=1e-10
 class Domain():
 
-    def __init__(self, name, num_constants):
+    def __init__(self, name, num_constants, constants=None):
 
         if name is not None:
             self.name = str(name)
         else:
             raise Exception("Attribute 'name' is None.")
-        self.num_constants = num_constants #TODO check iterable
+        self.num_constants = num_constants
+        self.constants = constants
+        if constants is not None:
+            assert self.num_constants == len(constants)
 
 
 
