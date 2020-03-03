@@ -380,7 +380,7 @@ class GPUGibbsSamplerV2(Sampler):
         else:
             self.flips = num_variables
 
-    #@tf.function
+    @tf.function
     def __sample(self, current_state, conditional_data=None, num_samples=None, minibatch = None):
 
 
@@ -594,7 +594,7 @@ class FuzzyMAPGibbsSamplingInference(Inference):
                                          initial_state=self.map_state,
                                          evidence=self.parameters["evidence"],
                                          evidence_mask=self.parameters["evidence_mask"],
-                                         flips=None,
+                                         flips= self.parameters["flips"] if "flips" in self.parameters else None,
                                          num_examples=1)
 
         self.num_samples = self.parameters["num_samples"]
@@ -625,7 +625,7 @@ class FuzzyMAPGibbsSamplingInference(Inference):
 
 
     def infer_fuzzy(self, x=None):
-        steps_map = 10
+        steps_map = 2
         for i in range(steps_map):
             self.infer_step(x)
             if "evaluate" in self.parameters and i % 2 == 0:
@@ -638,7 +638,10 @@ class FuzzyMAPGibbsSamplingInference(Inference):
 
     def infer(self,x=None):
 
+        print("Fuzzy MAP inference")
         self.map_state = self.infer_fuzzy(x)
+
+        print("Gibbs sampling inference")
         self._create_sampler()
         return self.infer_gs(x)
 

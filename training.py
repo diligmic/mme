@@ -162,6 +162,7 @@ class PieceWiseTrainingv2(Train):
                                     ntrue_uo / (ntrue_uo * e_beta + nfalse_uo + eps)))*e_beta)
                         grad_var = [(grad, p.beta)]
                         self.optimizer_logic.apply_gradients(grad_var)
+                print("Computed beta for: %s" % p.formula.definition, p.beta)
 
     def nn_w_update(self, y, x=None, soft_xent = False):
         """The method returns a training operation for maximizing the likelihood of the model."""

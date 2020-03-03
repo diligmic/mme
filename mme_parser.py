@@ -88,7 +88,7 @@ class Formula(object):
         self.atoms = []
         self.logic = None
         self.expression_tree = self.parse(definition)
-
+        self.definition = definition
 
         # Computing Variable indices
         sizes = []
