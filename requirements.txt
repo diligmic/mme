@@ -1,0 +1,26 @@
+# Library dependencies for the python3 code. You need to install these with
+# `pip install -r requirements.txt` before you can run this.
+# The code has been tested on tensorflow version 2.2.
+
+#### ESSENTIAL LIBRARIES FOR MAIN FUNCTIONALITY ####
+tensorflow
+problog
+matplotlib
+pyparsing
+scikit-learn
+sortedcontainers
+tensorflow_probability
+
+# If you use virtualenv you can 
+# sudo pip install virtualenv
+# cd __WHERE_YOU_PLAN_TO_INSTALL_YOUR_CODE__
+# virtualenv rnm --python=python3
+# source rnm/bin/activate
+# pip install tensorflow
+# pip install problog
+# pip install matplotlib
+# pip install spektral
+# pip install pyparsing
+# pip install scikit-learn
+# pip install sortedcontainers
+# pip install tensorflow_probability
